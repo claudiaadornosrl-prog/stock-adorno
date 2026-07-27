@@ -111,6 +111,10 @@ body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Ro
     <input id="login-email" type="email" autocomplete="username" placeholder="tu-email@ejemplo.com">
     <label>Contraseña</label>
     <input id="login-pass" type="password" autocomplete="current-password" placeholder="••••••••">
+    <label style="display:flex;align-items:center;gap:8px;text-transform:none;letter-spacing:0;font-size:13px;font-weight:400;color:var(--muted);cursor:pointer;margin-bottom:10px;">
+      <input type="checkbox" id="login-recordar" checked style="width:auto;margin:0;accent-color:var(--primary);">
+      Recordar mis datos en este dispositivo
+    </label>
     <div class="login-error" id="login-error"></div>
     <button class="btn-login" id="btn-login" onclick="doLogin()">Entrar →</button>
   </div>
@@ -157,6 +161,15 @@ const sb = window.supabase.createClient(SUPA_URL, SUPA_KEY, {
 function mostrarLogin() {
   document.getElementById('login-screen').style.display = '';
   document.getElementById('app').style.display = 'none';
+  // Precargar credenciales recordadas
+  try {
+    const rec = JSON.parse(localStorage.getItem('stock_credenciales') || 'null');
+    if (rec?.email) {
+      document.getElementById('login-email').value = rec.email;
+      document.getElementById('login-pass').value = rec.pass || '';
+      document.getElementById('login-recordar').checked = true;
+    }
+  } catch (_) {}
 }
 function mostrarApp() {
   document.getElementById('login-screen').style.display = 'none';
@@ -181,6 +194,12 @@ async function doLogin() {
     if (e2) {
       await sb.auth.signOut();
       throw new Error('Tu usuario no está activo en el sistema.');
+    }
+    // Recordar (o borrar) credenciales según el checkbox
+    if (document.getElementById('login-recordar').checked) {
+      localStorage.setItem('stock_credenciales', JSON.stringify({ email, pass }));
+    } else {
+      localStorage.removeItem('stock_credenciales');
     }
     mostrarApp();
   } catch (e) {
