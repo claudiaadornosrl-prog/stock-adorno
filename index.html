@@ -918,6 +918,28 @@ function cerrarScanner() {
 }
 
 // ── Pedido de traslado entre locales ──
+let _nombreCache;
+async function nombrePropio() {
+  if (_nombreCache !== undefined) return _nombreCache;
+  let nombre = '';
+  try {
+    const { data: u } = await sb.rpc('rrhh_current_user');
+    if (u?.empleado_id) {
+      const { data: e } = await sb.from('rrhh_empleados')
+        .select('nombre, apellido').eq('id', u.empleado_id).single();
+      if (e) {
+        const primero = (e.nombre || '').trim().split(/\s+/)[0] || '';
+        nombre = (primero + ' ' + (e.apellido || '')).trim().toLowerCase()
+          .replace(/(^|\s)\S/g, c => c.toUpperCase());
+      }
+    }
+  } catch (_) {}
+  if (!nombre) {
+    try { nombre = (await sb.auth.getUser()).data?.user?.email || ''; } catch (_) {}
+  }
+  return (_nombreCache = nombre);
+}
+
 let trasladoActual = null;
 function abrirTraslado(sku, local) {
   const a = (ultimoResultado?.articulos || []).find(x => x.sku === sku);
@@ -939,13 +961,14 @@ async function enviarTraslado() {
   let quien = '', empId = null;
   try { quien = (await sb.auth.getUser()).data?.user?.email || ''; } catch (_) {}
   try { empId = (await sb.rpc('rrhh_current_user')).data?.empleado_id ?? null; } catch (_) {}
+  const nombre = await nombrePropio();
   try {
     const { data: fila, error } = await sb.from('stock_traslados').insert({
       sku, descripcion: desc, cantidad: cant, local_origen: local,
-      solicitante_email: quien, solicitante_empleado_id: empId,
+      solicitante_email: quien, solicitante_empleado_id: empId, solicitante_nombre: nombre,
     }).select('id').single();
     if (error) throw error;
-    const cuerpo = `¿Tienen ${cant} × ${sku}${desc ? ' (' + desc + ')' : ''} para apartar?${quien ? ' Pide ' + quien : ''}`;
+    const cuerpo = `¿Tienen ${cant} × ${sku}${desc ? ' (' + desc + ')' : ''} para apartar?${nombre ? ' Pide ' + nombre : ''}`;
     await sb.functions.invoke('enviar-push', {
       body: {
         local_todos: local,
@@ -964,12 +987,13 @@ async function enviarTraslado() {
 // ── Responder un pedido de traslado (se abre al tocar la notificación) ──
 let trasladoResp = null;
 
-function abrirModalRespuesta(t, miEmail) {
+function abrirModalRespuesta(t, miNombre) {
   trasladoResp = t;
+  const solicitante = t.solicitante_nombre || t.solicitante_email;
   document.getElementById('trasresp-titulo').textContent = '🔁 Pedido de traslado';
   document.getElementById('trasresp-desc').textContent =
     `${t.cantidad} × ${t.sku}${t.descripcion ? ' · ' + t.descripcion : ''}` +
-    (t.solicitante_email ? `\nPide: ${t.solicitante_email}` : '');
+    (solicitante ? `\nPide: ${solicitante}` : '');
   const info = document.getElementById('trasresp-info');
   const e1 = document.getElementById('trasresp-etapa1');
   const e2 = document.getElementById('trasresp-etapa2');
@@ -979,7 +1003,7 @@ function abrirModalRespuesta(t, miEmail) {
     e2.style.display = 'none';
   } else {
     // Ya lo está revisando alguien → mostrar quién y dejar confirmar
-    const esMio = miEmail && t.revisando_por === miEmail;
+    const esMio = miNombre && t.revisando_por === miNombre;
     info.textContent = esMio ? '👀 Lo estás revisando vos — confirmá cuando sepas.'
       : `👀 Lo está revisando ${t.revisando_por || 'otra compañera'}.`;
     info.style.display = 'block';
@@ -1000,9 +1024,7 @@ async function chequearTrasladoURL() {
       toast(`Este pedido ya fue respondido (${t.estado === 'apartado' ? '✅ guardado' : '❌ sin stock'}${t.respondido_por ? ' por ' + t.respondido_por : ''})`);
       return;
     }
-    let miEmail = '';
-    try { miEmail = (await sb.auth.getUser()).data?.user?.email || ''; } catch (_) {}
-    abrirModalRespuesta(t, miEmail);
+    abrirModalRespuesta(t, await nombrePropio());
   } catch (e) {
     toast('' + (e.message || e));
   }
@@ -1011,8 +1033,7 @@ async function chequearTrasladoURL() {
 async function marcarRevisando() {
   if (!trasladoResp) return;
   const t = trasladoResp;
-  let quien = '';
-  try { quien = (await sb.auth.getUser()).data?.user?.email || ''; } catch (_) {}
+  const quien = await nombrePropio();
   try {
     const { data: filas, error } = await sb.from('stock_traslados')
       .update({ estado: 'revisando', revisando_por: quien, revisando_at: new Date().toISOString() })
@@ -1046,8 +1067,7 @@ async function responderTraslado(tiene) {
   const t = trasladoResp;
   document.getElementById('trasresp-modal-bg').style.display = 'none';
   trasladoResp = null;
-  let quien = '';
-  try { quien = (await sb.auth.getUser()).data?.user?.email || ''; } catch (_) {}
+  const quien = await nombrePropio();
   const estado = tiene ? 'apartado' : 'sin_stock';
   try {
     const { error } = await sb.from('stock_traslados')
