@@ -835,42 +835,81 @@ async function verColores(sku) {
 }
 
 // ── Lector de código de barras ──
-let scanStream = null, scanTimer = null;
-if (!('BarcodeDetector' in window)) {
-  document.getElementById('btn-scan').style.display = 'none';
+// Nativo (BarcodeDetector, Android) con fallback ZXing (iPhone / desktop).
+let scanStream = null, scanTimer = null, zxingReader = null, scanCancelado = false;
+
+function cargarScript(src) {
+  return new Promise((res, rej) => {
+    const el = document.createElement('script');
+    el.src = src; el.onload = res;
+    el.onerror = () => rej(new Error('No pude cargar el lector de códigos. ¿Hay internet?'));
+    document.head.appendChild(el);
+  });
 }
+
 async function abrirScanner() {
   const bg = document.getElementById('scan-modal-bg');
   const video = document.getElementById('scan-video');
-  try {
-    scanStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-  } catch (e) { toast('No pude acceder a la cámara: ' + (e.message || e)); return; }
-  video.srcObject = scanStream;
+  scanCancelado = false;
   bg.style.display = 'flex';
-  let formatos = ['ean_13', 'ean_8', 'code_128', 'code_39', 'upc_a', 'upc_e', 'itf'];
   try {
-    const sop = await BarcodeDetector.getSupportedFormats();
-    formatos = formatos.filter(f => sop.includes(f));
-  } catch (_) {}
-  const detector = new BarcodeDetector({ formats: formatos });
-  scanTimer = setInterval(async () => {
-    if (video.readyState < 2) return;
-    try {
-      const codes = await detector.detect(video);
-      if (codes.length) {
-        const valor = (codes[0].rawValue || '').trim();
-        if (!valor) return;
-        if (navigator.vibrate) navigator.vibrate(80);
-        cerrarScanner();
-        document.getElementById('q').value = valor;
-        buscar();
-      }
-    } catch (_) { /* frame malo, sigue */ }
-  }, 250);
+    if ('BarcodeDetector' in window) {
+      // Camino nativo (Chrome Android)
+      scanStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      video.srcObject = scanStream;
+      let formatos = ['ean_13', 'ean_8', 'code_128', 'code_39', 'upc_a', 'upc_e', 'itf'];
+      try {
+        const sop = await BarcodeDetector.getSupportedFormats();
+        formatos = formatos.filter(f => sop.includes(f));
+      } catch (_) {}
+      const detector = new BarcodeDetector({ formats: formatos });
+      scanTimer = setInterval(async () => {
+        if (video.readyState < 2) return;
+        try {
+          const codes = await detector.detect(video);
+          if (codes.length) {
+            const valor = (codes[0].rawValue || '').trim();
+            if (!valor) return;
+            usarCodigo(valor);
+          }
+        } catch (_) { /* frame malo, sigue */ }
+      }, 250);
+    } else {
+      // Fallback ZXing (iPhone / Safari / desktop)
+      if (!window.ZXing) await cargarScript('https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js');
+      zxingReader = new ZXing.BrowserMultiFormatReader();
+      const result = await zxingReader.decodeOnceFromConstraints(
+        { video: { facingMode: 'environment' } }, video);
+      const valor = (result?.getText() || '').trim();
+      if (valor) usarCodigo(valor);
+      else cerrarScanner();
+    }
+  } catch (e) {
+    const cancelado = scanCancelado;
+    cerrarScanner();
+    if (cancelado) return;
+    if (e && (e.name === 'NotAllowedError' || e.name === 'SecurityError')) {
+      toast('Permiso de cámara denegado. En iPhone: Ajustes → Safari → Cámara → Permitir. Si usás la app instalada, borrala y volvé a instalarla para que pida permiso.');
+    } else if (e && e.name === 'NotFoundError') {
+      toast('No encontré cámara en este dispositivo.');
+    } else {
+      toast('No pude acceder a la cámara: ' + (e.message || e));
+    }
+  }
 }
+
+function usarCodigo(valor) {
+  if (navigator.vibrate) navigator.vibrate(80);
+  cerrarScanner();
+  document.getElementById('q').value = valor;
+  buscar();
+}
+
 function cerrarScanner() {
+  scanCancelado = true;
   clearInterval(scanTimer); scanTimer = null;
   if (scanStream) { scanStream.getTracks().forEach(t => t.stop()); scanStream = null; }
+  if (zxingReader) { try { zxingReader.reset(); } catch (_) {} zxingReader = null; }
   document.getElementById('scan-modal-bg').style.display = 'none';
 }
 
