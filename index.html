@@ -398,9 +398,34 @@ async function cargarEspalma() {
     if (error) throw error;
     espCache = data || [];
     renderEspalma();
+    actualizarPreciosEspalma();
   } catch (e) {
     cont.innerHTML = `<div class="empty">⚠️ Error: ${escHtml(e.message)}</div>`;
   }
+}
+
+async function actualizarPreciosEspalma() {
+  // Toma el precio real y actual de los articulos que matchean el patron
+  const conPatron = espCache.filter(m => m.patron);
+  if (!conPatron.length) return;
+  try {
+    const resultados = await Promise.all(conPatron.map(m =>
+      sb.from('stock_articulos').select('precio')
+        .ilike('descripcion', m.patron).eq('local', 'alcorta')
+        .gt('precio', 0).limit(100)
+    ));
+    let cambio = false;
+    conPatron.forEach((m, idx) => {
+      const filas = resultados[idx].data || [];
+      if (!filas.length) return;
+      // Precio mas frecuente entre los colores (por si algun SKU quedo desactualizado)
+      const cuenta = {};
+      for (const f of filas) cuenta[f.precio] = (cuenta[f.precio] || 0) + 1;
+      const precio = parseFloat(Object.entries(cuenta).sort((a, b) => b[1] - a[1])[0][0]);
+      if (precio && precio !== parseFloat(m.precio)) { m.precio = precio; cambio = true; }
+    });
+    if (cambio) renderEspalma();
+  } catch (_) { /* si falla, quedan los precios guardados */ }
 }
 
 function renderEspalma() {
@@ -448,8 +473,10 @@ async function abrirEspalmaStock(id) {
       a.stocks[r.local] = parseFloat(r.stock || 0);
     }
     let items = Object.values(map);
+    // Solo colores con stock en algun local
+    items = items.filter(i => Object.values(i.stocks).some(st => st > 0));
     if (!items.length) {
-      cont.innerHTML = '<div class="empty">No encontré artículos para este modelo.</div>';
+      cont.innerHTML = '<div class="empty">Sin stock en ningún color por el momento.</div>';
       return;
     }
     // Sacar el prefijo común de palabras para mostrar solo el color
@@ -469,7 +496,7 @@ async function abrirEspalmaStock(id) {
         ${celda(i.stocks.alcorta)}${celda(i.stocks.unicenter)}${celda(i.stocks.oficina)}
       </tr>`).join('')}</tbody>
     </table></div>
-    <div style="font-size:11px;color:var(--muted);margin-top:8px;">${items.length} colores · tocá el nombre para ver el SKU</div>`;
+    <div style="font-size:11px;color:var(--muted);margin-top:8px;">${items.length} colores con stock · tocá el nombre para ver el SKU</div>`;
   } catch (e) {
     cont.innerHTML = `<div class="empty">⚠️ ${escHtml(e.message)}</div>`;
   }
