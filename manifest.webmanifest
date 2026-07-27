@@ -1,0 +1,13 @@
+{
+  "name": "Stock · Claudia Adorno",
+  "short_name": "Stock",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#1565c0",
+  "theme_color": "#1565c0",
+  "orientation": "portrait",
+  "icons": [
+    { "src": "favicon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}
