@@ -52,6 +52,10 @@ body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Ro
 .card { background: var(--card); border-radius: 12px; box-shadow: var(--shadow);
   padding: 14px; margin-bottom: 12px; }
 .card-top { display: flex; align-items: flex-start; gap: 10px; }
+.thumb { flex: 0 0 62px; width: 62px; height: 62px; border-radius: 10px; overflow: hidden;
+  background: #f3f4f6; display: none; }
+.thumb.has { display: block; }
+.thumb img { width: 100%; height: 100%; object-fit: cover; cursor: zoom-in; }
 .card-info { flex: 1; min-width: 0; }
 .sku-chip { display: inline-block; font-family: ui-monospace, Consolas, monospace; font-size: 12px;
   font-weight: 700; background: #e8f0fe; color: var(--primary-dark); border-radius: 6px;
@@ -327,6 +331,21 @@ function render(articulos, q) {
   const top = articulos.slice(0, 30);
   cont.innerHTML = top.map(cardHtml).join('') +
     (articulos.length > 30 ? `<div class="empty">…y ${articulos.length - 30} resultados más. Afiná la búsqueda.</div>` : '');
+  cargarImagenes(top.map(a => a.sku));
+}
+
+async function cargarImagenes(skus) {
+  if (!skus.length) return;
+  try {
+    const { data } = await sb.from('stock_imagenes').select('sku, url').in('sku', skus);
+    for (const r of (data || [])) {
+      const div = document.getElementById('img-' + cssId(r.sku));
+      if (div) {
+        div.innerHTML = `<img src="${r.url}" loading="lazy" alt="" onclick="window.open('${r.url}', '_blank')">`;
+        div.classList.add('has');
+      }
+    }
+  } catch (_) { /* sin imágenes, no pasa nada */ }
 }
 
 function cardHtml(a) {
@@ -342,6 +361,7 @@ function cardHtml(a) {
   }).join('');
   return `<div class="card">
     <div class="card-top">
+      <div class="thumb" id="img-${cssId(a.sku)}"></div>
       <div class="card-info">
         <span class="sku-chip">${escHtml(a.sku)}</span>
         <div class="desc">${escHtml(a.descripcion || 'Sin descripción')}</div>
