@@ -439,8 +439,10 @@ function renderEspalma() {
       (esAdmin ? '<br>Usá el botón ＋ para agregar el primero.' : '') + '</div>';
     return;
   }
-  const filas = espCache.map(m => `
-    <tr class="${m.patron ? 'esp-fila-click' : ''}" ${m.patron ? `onclick="abrirEspalmaStock(${m.id})" title="Ver stock por color"` : ''}>
+  // Modelos sin ningun color en stock: ocultos (admin los ve atenuados para poder editarlos)
+  const visibles = espCache.filter(m => m.colores_stock !== 0 || esAdmin);
+  const filas = visibles.map(m => `
+    <tr class="${m.patron ? 'esp-fila-click' : ''}" ${m.colores_stock === 0 ? 'style="opacity:0.45;"' : ''} ${m.patron ? `onclick="abrirEspalmaStock(${m.id})" title="Ver stock por color"` : ''}>
       <td><span class="esp-modelo">${escHtml(m.modelo)}</span>
           ${m.nota ? `<div class="esp-nota">${escHtml(m.nota)}</div>` : ''}
           ${m.colores_stock != null ? `<div class="esp-nota">${m.colores_stock === 1 ? '1 color' : m.colores_stock + ' colores'} en stock</div>` : ''}</td>
