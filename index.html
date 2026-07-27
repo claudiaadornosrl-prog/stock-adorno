@@ -237,6 +237,18 @@ body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Ro
   </div>
 </div>
 
+<div id="trasresp-modal-bg" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:86; align-items:center; justify-content:center; padding:16px;">
+  <div style="background:white; border-radius:14px; padding:18px; width:100%; max-width:380px;">
+    <h3 id="trasresp-titulo" style="margin:0 0 6px; font-size:16px;"></h3>
+    <div id="trasresp-desc" style="font-size:13px; color:var(--muted); margin-bottom:14px; white-space:pre-line;"></div>
+    <div style="display:flex; gap:8px;">
+      <button class="btn-login" style="flex:1; background:#16a34a;" onclick="responderTraslado(true)">✅ Sí, lo aparto</button>
+      <button class="btn-login" style="flex:1; background:#dc2626;" onclick="responderTraslado(false)">❌ No hay</button>
+    </div>
+    <button style="width:100%; margin-top:8px; background:white; border:1px solid var(--border); border-radius:8px; padding:10px; cursor:pointer;" onclick="document.getElementById('trasresp-modal-bg').style.display='none'">Después</button>
+  </div>
+</div>
+
 <div id="espstock-modal-bg" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:80; align-items:center; justify-content:center; padding:16px;">
   <div class="esp-modal" style="max-width:480px;">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
@@ -299,6 +311,7 @@ function mostrarApp() {
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('app').style.display = '';
   detectarAdmin();
+  chequearTrasladoURL();
   setTimeout(() => document.getElementById('q').focus(), 100);
 }
 
@@ -800,13 +813,25 @@ function compartirWA(sku) {
 }
 
 // ── Ver otros colores / variantes ──
-function verColores(sku) {
+async function verColores(sku) {
   const a = (ultimoResultado?.articulos || []).find(x => x.sku === sku);
   if (!a || !a.descripcion) return;
-  const palabras = a.descripcion.trim().split(/\s+/);
-  if (palabras.length < 2) { toast('Este artículo no tiene variantes por nombre.'); return; }
-  const base = palabras.slice(0, -1).join(' ').replace(/[%_]/g, '');
-  mostrarStockPorColor(base, base + '%');
+  const palabras = a.descripcion.trim().replace(/[%_]/g, '').split(/\s+/);
+  toast('🎨 Buscando variantes…');
+  // Recorta palabras del final (color, códigos) hasta encontrar 2+ variantes con stock
+  for (let n = palabras.length - 1; n >= 1; n--) {
+    const base = palabras.slice(0, n).join(' ');
+    if (base.length < 4) break;
+    try {
+      const { data } = await sb.from('stock_articulos')
+        .select('sku, stock').ilike('descripcion', base + '%').limit(400);
+      const porSku = {};
+      for (const f of (data || [])) porSku[f.sku] = (porSku[f.sku] || 0) + parseFloat(f.stock || 0);
+      const conStock = Object.values(porSku).filter(t => t > 0).length;
+      if (conStock >= 2) { mostrarStockPorColor(base, base + '%'); return; }
+    } catch (_) { break; }
+  }
+  toast('No encontré otras variantes con stock de este artículo.');
 }
 
 // ── Lector de código de barras ──
@@ -867,21 +892,82 @@ async function enviarTraslado() {
   if (!trasladoActual) return;
   const { sku, local, desc } = trasladoActual;
   const cant = parseInt(document.getElementById('tras-cant').value) || 1;
-  let quien = '';
-  try { quien = (await sb.auth.getUser()).data?.user?.email || ''; } catch (_) {}
-  const cuerpo = `Necesitan ${cant} × ${sku}${desc ? ' (' + desc + ')' : ''}${quien ? ' · pide ' + quien : ''}`;
   cerrarTraslado();
+  let quien = '', empId = null;
+  try { quien = (await sb.auth.getUser()).data?.user?.email || ''; } catch (_) {}
+  try { empId = (await sb.rpc('rrhh_current_user')).data?.empleado_id ?? null; } catch (_) {}
   try {
+    const { data: fila, error } = await sb.from('stock_traslados').insert({
+      sku, descripcion: desc, cantidad: cant, local_origen: local,
+      solicitante_email: quien, solicitante_empleado_id: empId,
+    }).select('id').single();
+    if (error) throw error;
+    const cuerpo = `¿Tienen ${cant} × ${sku}${desc ? ' (' + desc + ')' : ''} para apartar?${quien ? ' Pide ' + quien : ''}`;
     await sb.functions.invoke('enviar-push', {
-      body: { local, title: '🔁 Pedido de traslado', body: cuerpo, tag: 'tras-' + sku } });
-    if (local === 'oficina') {
-      // JP cumple el rol de encargado en Oficina
-      await sb.functions.invoke('enviar-push', {
-        body: { empleado_id: 3, title: '🔁 Pedido de traslado', body: cuerpo, tag: 'tras-' + sku } });
-    }
-    toast('📣 Pedido enviado a la encargada de ' + LOCAL_LABEL[local]);
+      body: {
+        local_todos: local,
+        title: '🔁 Pedido de traslado',
+        body: cuerpo,
+        tag: 'tras-' + fila.id,
+        url: 'https://claudiaadornosrl-prog.github.io/stock-adorno/?traslado=' + fila.id,
+      }
+    });
+    toast('📣 Pedido enviado a ' + LOCAL_LABEL[local] + ' — te llega push cuando respondan');
   } catch (e) {
     toast('No pude enviar el pedido: ' + (e.message || e));
+  }
+}
+
+// ── Responder un pedido de traslado (se abre al tocar la notificación) ──
+let trasladoResp = null;
+async function chequearTrasladoURL() {
+  const id = new URLSearchParams(location.search).get('traslado');
+  if (!id) return;
+  history.replaceState(null, '', location.pathname);
+  try {
+    const { data: t, error } = await sb.from('stock_traslados').select('*').eq('id', id).single();
+    if (error || !t) throw new Error('No encontré el pedido de traslado.');
+    if (t.estado !== 'pendiente') {
+      toast(`Este pedido ya fue respondido (${t.estado === 'apartado' ? '✅ apartado' : '❌ sin stock'}${t.respondido_por ? ' por ' + t.respondido_por : ''})`);
+      return;
+    }
+    trasladoResp = t;
+    document.getElementById('trasresp-titulo').textContent = '🔁 Pedido de traslado';
+    document.getElementById('trasresp-desc').textContent =
+      `${t.cantidad} × ${t.sku}${t.descripcion ? ' · ' + t.descripcion : ''}` +
+      (t.solicitante_email ? `\nPide: ${t.solicitante_email}` : '') +
+      '\n¿Lo tienen para apartar?';
+    document.getElementById('trasresp-modal-bg').style.display = 'flex';
+  } catch (e) {
+    toast('' + (e.message || e));
+  }
+}
+async function responderTraslado(tiene) {
+  if (!trasladoResp) return;
+  const t = trasladoResp;
+  document.getElementById('trasresp-modal-bg').style.display = 'none';
+  trasladoResp = null;
+  let quien = '';
+  try { quien = (await sb.auth.getUser()).data?.user?.email || ''; } catch (_) {}
+  const estado = tiene ? 'apartado' : 'sin_stock';
+  try {
+    const { error } = await sb.from('stock_traslados')
+      .update({ estado, respondido_por: quien, respondido_at: new Date().toISOString() })
+      .eq('id', t.id).eq('estado', 'pendiente');
+    if (error) throw error;
+    if (t.solicitante_empleado_id) {
+      await sb.functions.invoke('enviar-push', {
+        body: {
+          empleado_id: t.solicitante_empleado_id,
+          title: tiene ? '✅ Traslado apartado' : '❌ Traslado sin stock',
+          body: `${LOCAL_LABEL[t.local_origen]}: ${tiene ? 'te apartaron' : 'no tienen'} ${t.cantidad} × ${t.sku}${quien ? ' · respondió ' + quien : ''}`,
+          tag: 'tras-' + t.id,
+        }
+      });
+    }
+    toast(tiene ? '✅ Apartado — le avisamos a quien lo pidió' : 'Sin stock — le avisamos a quien lo pidió');
+  } catch (e) {
+    toast('No pude guardar la respuesta: ' + (e.message || e));
   }
 }
 
