@@ -240,10 +240,15 @@ body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Ro
 <div id="trasresp-modal-bg" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:86; align-items:center; justify-content:center; padding:16px;">
   <div style="background:white; border-radius:14px; padding:18px; width:100%; max-width:380px;">
     <h3 id="trasresp-titulo" style="margin:0 0 6px; font-size:16px;"></h3>
-    <div id="trasresp-desc" style="font-size:13px; color:var(--muted); margin-bottom:14px; white-space:pre-line;"></div>
-    <div style="display:flex; gap:8px;">
-      <button class="btn-login" style="flex:1; background:#16a34a;" onclick="responderTraslado(true)">✅ Sí, lo aparto</button>
-      <button class="btn-login" style="flex:1; background:#dc2626;" onclick="responderTraslado(false)">❌ No hay</button>
+    <div id="trasresp-desc" style="font-size:13px; color:var(--muted); margin-bottom:12px; white-space:pre-line;"></div>
+    <div id="trasresp-info" style="display:none; font-size:13px; background:#fef9c3; color:#854d0e; border-radius:8px; padding:8px 10px; margin-bottom:12px;"></div>
+    <div id="trasresp-etapa1" style="display:none;">
+      <button class="btn-login" onclick="marcarRevisando()">👀 Estoy revisando</button>
+      <div style="font-size:11px; color:var(--muted); margin-top:6px; text-align:center;">Le avisa a quien lo pidió que alguien lo está buscando</div>
+    </div>
+    <div id="trasresp-etapa2" style="display:none; gap:8px;">
+      <button class="btn-login" style="flex:1; background:#16a34a;" onclick="responderTraslado(true)">✅ Está, lo guardo</button>
+      <button class="btn-login" style="flex:1; background:#dc2626;" onclick="responderTraslado(false)">❌ No está</button>
     </div>
     <button style="width:100%; margin-top:8px; background:white; border:1px solid var(--border); border-radius:8px; padding:10px; cursor:pointer;" onclick="document.getElementById('trasresp-modal-bg').style.display='none'">Después</button>
   </div>
@@ -958,6 +963,32 @@ async function enviarTraslado() {
 
 // ── Responder un pedido de traslado (se abre al tocar la notificación) ──
 let trasladoResp = null;
+
+function abrirModalRespuesta(t, miEmail) {
+  trasladoResp = t;
+  document.getElementById('trasresp-titulo').textContent = '🔁 Pedido de traslado';
+  document.getElementById('trasresp-desc').textContent =
+    `${t.cantidad} × ${t.sku}${t.descripcion ? ' · ' + t.descripcion : ''}` +
+    (t.solicitante_email ? `\nPide: ${t.solicitante_email}` : '');
+  const info = document.getElementById('trasresp-info');
+  const e1 = document.getElementById('trasresp-etapa1');
+  const e2 = document.getElementById('trasresp-etapa2');
+  if (t.estado === 'pendiente') {
+    info.style.display = 'none';
+    e1.style.display = 'block';
+    e2.style.display = 'none';
+  } else {
+    // Ya lo está revisando alguien → mostrar quién y dejar confirmar
+    const esMio = miEmail && t.revisando_por === miEmail;
+    info.textContent = esMio ? '👀 Lo estás revisando vos — confirmá cuando sepas.'
+      : `👀 Lo está revisando ${t.revisando_por || 'otra compañera'}.`;
+    info.style.display = 'block';
+    e1.style.display = 'none';
+    e2.style.display = 'flex';
+  }
+  document.getElementById('trasresp-modal-bg').style.display = 'flex';
+}
+
 async function chequearTrasladoURL() {
   const id = new URLSearchParams(location.search).get('traslado');
   if (!id) return;
@@ -965,19 +996,49 @@ async function chequearTrasladoURL() {
   try {
     const { data: t, error } = await sb.from('stock_traslados').select('*').eq('id', id).single();
     if (error || !t) throw new Error('No encontré el pedido de traslado.');
-    if (t.estado !== 'pendiente') {
-      toast(`Este pedido ya fue respondido (${t.estado === 'apartado' ? '✅ apartado' : '❌ sin stock'}${t.respondido_por ? ' por ' + t.respondido_por : ''})`);
+    if (t.estado === 'apartado' || t.estado === 'sin_stock') {
+      toast(`Este pedido ya fue respondido (${t.estado === 'apartado' ? '✅ guardado' : '❌ sin stock'}${t.respondido_por ? ' por ' + t.respondido_por : ''})`);
       return;
     }
-    trasladoResp = t;
-    document.getElementById('trasresp-titulo').textContent = '🔁 Pedido de traslado';
-    document.getElementById('trasresp-desc').textContent =
-      `${t.cantidad} × ${t.sku}${t.descripcion ? ' · ' + t.descripcion : ''}` +
-      (t.solicitante_email ? `\nPide: ${t.solicitante_email}` : '') +
-      '\n¿Lo tienen para apartar?';
-    document.getElementById('trasresp-modal-bg').style.display = 'flex';
+    let miEmail = '';
+    try { miEmail = (await sb.auth.getUser()).data?.user?.email || ''; } catch (_) {}
+    abrirModalRespuesta(t, miEmail);
   } catch (e) {
     toast('' + (e.message || e));
+  }
+}
+
+async function marcarRevisando() {
+  if (!trasladoResp) return;
+  const t = trasladoResp;
+  let quien = '';
+  try { quien = (await sb.auth.getUser()).data?.user?.email || ''; } catch (_) {}
+  try {
+    const { data: filas, error } = await sb.from('stock_traslados')
+      .update({ estado: 'revisando', revisando_por: quien, revisando_at: new Date().toISOString() })
+      .eq('id', t.id).eq('estado', 'pendiente').select('id');
+    if (error) throw error;
+    if (!filas || !filas.length) {
+      // Otra compañera lo agarró un segundo antes → recargar estado
+      const { data: t2 } = await sb.from('stock_traslados').select('*').eq('id', t.id).single();
+      if (t2) abrirModalRespuesta(t2, quien);
+      return;
+    }
+    t.estado = 'revisando'; t.revisando_por = quien;
+    abrirModalRespuesta(t, quien);
+    if (t.solicitante_empleado_id) {
+      await sb.functions.invoke('enviar-push', {
+        body: {
+          empleado_id: t.solicitante_empleado_id,
+          title: '👀 Están revisando tu pedido',
+          body: `${LOCAL_LABEL[t.local_origen]}: ${quien || 'una compañera'} está buscando ${t.cantidad} × ${t.sku}`,
+          tag: 'tras-' + t.id,
+        }
+      });
+    }
+    toast('👀 Marcado — le avisamos a quien lo pidió que lo estás buscando');
+  } catch (e) {
+    toast('No pude marcarlo: ' + (e.message || e));
   }
 }
 async function responderTraslado(tiene) {
@@ -991,19 +1052,19 @@ async function responderTraslado(tiene) {
   try {
     const { error } = await sb.from('stock_traslados')
       .update({ estado, respondido_por: quien, respondido_at: new Date().toISOString() })
-      .eq('id', t.id).eq('estado', 'pendiente');
+      .eq('id', t.id).in('estado', ['pendiente', 'revisando']);
     if (error) throw error;
     if (t.solicitante_empleado_id) {
       await sb.functions.invoke('enviar-push', {
         body: {
           empleado_id: t.solicitante_empleado_id,
-          title: tiene ? '✅ Traslado apartado' : '❌ Traslado sin stock',
-          body: `${LOCAL_LABEL[t.local_origen]}: ${tiene ? 'te apartaron' : 'no tienen'} ${t.cantidad} × ${t.sku}${quien ? ' · respondió ' + quien : ''}`,
+          title: tiene ? '✅ Te lo guardaron' : '❌ No está la mercadería',
+          body: `${LOCAL_LABEL[t.local_origen]}: ${tiene ? 'te guardaron' : 'no encontraron'} ${t.cantidad} × ${t.sku}${quien ? ' · respondió ' + quien : ''}`,
           tag: 'tras-' + t.id,
         }
       });
     }
-    toast(tiene ? '✅ Apartado — le avisamos a quien lo pidió' : 'Sin stock — le avisamos a quien lo pidió');
+    toast(tiene ? '✅ Guardado — le avisamos a quien lo pidió' : 'Marcado como no está — le avisamos a quien lo pidió');
   } catch (e) {
     toast('No pude guardar la respuesta: ' + (e.message || e));
   }

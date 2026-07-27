@@ -1,5 +1,5 @@
 // Service Worker — Stock Adorno
-const CACHE_VERSION = 'stock-adorno-v25-fix-tdz';
+const CACHE_VERSION = 'stock-adorno-v26-traslado-2-etapas';
 const CACHE_ASSETS = ['./', './index.html', './manifest.webmanifest', './favicon.svg'];
 
 self.addEventListener('install', e => {
