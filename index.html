@@ -130,8 +130,8 @@ body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Ro
 <div class="header">
   <span style="font-size:22px;">📦</span>
   <span class="title">Stock <span class="sub">Claudia Adorno · Alcorta · Unicenter · Oficina</span></span>
-  <button id="btn-install">⬇ Instalar</button>
-  <button id="btn-logout" onclick="doLogout()" title="Cerrar sesión">👋 Salir</button>
+  <button id="btn-install" title="Instalar la app en este dispositivo">⬇</button>
+  <button id="btn-logout" onclick="doLogout()" title="Cerrar sesión">👋</button>
 </div>
 
 <div class="search-wrap">
@@ -142,7 +142,8 @@ body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Ro
   </div>
   <div class="filtros">
     <span class="hint" style="margin:0;flex:1;">Escribí al menos 2 letras o números. Ej: <b>044</b> o <b>dispenser</b></span>
-    <span class="chip-toggle" id="chk-constock" onclick="toggleSinStock()">🚫 Ocultar sin stock</span>
+    <span class="chip-toggle" id="chk-exacto" onclick="toggleExacto()" title="Solo resultado exacto (SKU igual a lo buscado)">🎯</span>
+    <span class="chip-toggle" id="chk-constock" onclick="toggleSinStock()" title="Ocultar artículos sin stock">🚫</span>
   </div>
 </div>
 
@@ -242,7 +243,15 @@ const escHtml = s => String(s ?? '').replace(/[&<>"']/g, c =>
 // BÚSQUEDA (snapshot en Supabase)
 // ═══════════════════════════════════════════════════════════════════
 let ocultarSinStock = localStorage.getItem('stock_ocultar_sin') === '1';
+let soloExacto = localStorage.getItem('stock_exacto') === '1';
 let ultimoResultado = null;
+
+function toggleExacto() {
+  soloExacto = !soloExacto;
+  localStorage.setItem('stock_exacto', soloExacto ? '1' : '0');
+  document.getElementById('chk-exacto').classList.toggle('on', soloExacto);
+  if (ultimoResultado) render(ultimoResultado.articulos, ultimoResultado.q);
+}
 
 function toggleSinStock() {
   ocultarSinStock = !ocultarSinStock;
@@ -252,6 +261,7 @@ function toggleSinStock() {
 }
 function actualizarChipFiltro() {
   document.getElementById('chk-constock').classList.toggle('on', ocultarSinStock);
+  document.getElementById('chk-exacto').classList.toggle('on', soloExacto);
 }
 actualizarChipFiltro();
 
@@ -313,6 +323,10 @@ function frescura(iso) {
 
 function render(articulos, q) {
   const cont = document.getElementById('resultados');
+  if (soloExacto && q) {
+    const qUp2 = q.toUpperCase();
+    articulos = articulos.filter(a => a.sku.toUpperCase() === qUp2);
+  }
   if (ocultarSinStock) {
     articulos = articulos.filter(a => Object.values(a.stocks).some(st => st > 0));
   }
@@ -373,7 +387,7 @@ function cardHtml(a) {
     <div class="stocks">${chips}</div>
     <div class="card-foot">
       <span class="frescura">${frescura(a.updated_at)}</span>
-      <button class="btn-live" id="live-${cssId(a.sku)}" onclick="verificarEnVivo('${escAttr(a.sku)}')">⚡ Verificar en vivo</button>
+      <button class="btn-live" id="live-${cssId(a.sku)}" onclick="verificarEnVivo('${escAttr(a.sku)}')" title="Verificar stock en vivo contra los servers">⚡</button>
     </div>
   </div>`;
 }
@@ -387,7 +401,7 @@ const escAttr = s => String(s).replace(/'/g, "\\'").replace(/"/g, '&quot;');
 // ═══════════════════════════════════════════════════════════════════
 async function verificarEnVivo(sku) {
   const btn = document.getElementById('live-' + cssId(sku));
-  if (btn) { btn.disabled = true; btn.textContent = '⏳ Consultando…'; }
+  if (btn) { btn.disabled = true; btn.textContent = '⏳'; }
 
   const hoy = new Date().toISOString().split('T')[0];
   const jobs = LOCALES.map(l => ({
@@ -401,7 +415,7 @@ async function verificarEnVivo(sku) {
     if (error) throw error;
     ids = data || [];
   } catch (e) {
-    if (btn) { btn.disabled = false; btn.textContent = '⚡ Verificar en vivo'; }
+    if (btn) { btn.disabled = false; btn.textContent = '⚡'; }
     alert('No pude iniciar la consulta en vivo: ' + e.message);
     return;
   }
@@ -431,7 +445,7 @@ async function verificarEnVivo(sku) {
   }
   for (const id of pendientes) marcarChip(sku, porId[id], 'sin respuesta', false);
 
-  if (btn) { btn.disabled = false; btn.textContent = '⚡ Verificar en vivo'; }
+  if (btn) { btn.disabled = false; btn.textContent = '⚡'; }
 }
 
 function actualizarChipVivo(sku, local, payload) {
