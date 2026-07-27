@@ -75,6 +75,25 @@ body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Ro
   border-radius: 8px; padding: 6px 12px; font-size: 13px; font-weight: 600; cursor: pointer; }
 .btn-live:disabled { opacity: 0.5; }
 
+#login-screen { min-height: 100vh; display: flex; align-items: center; justify-content: center;
+  padding: 20px; background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%); }
+.login-card { background: white; border-radius: 16px; padding: 30px 24px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.3); max-width: 380px; width: 100%; }
+.login-card h1 { text-align: center; font-size: 24px; margin: 0 0 4px; color: var(--primary); }
+.login-card .sub { text-align: center; font-size: 13px; color: var(--muted); margin-bottom: 22px; }
+.login-card label { font-size: 12px; font-weight: 600; color: var(--muted); display: block;
+  margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.04em; }
+.login-card input { width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: 8px;
+  font-size: 15px; margin-bottom: 14px; }
+.login-card input:focus { outline: none; border-color: var(--primary); }
+.login-error { color: #dc2626; font-size: 12px; margin-bottom: 8px; min-height: 16px; }
+.btn-login { background: var(--primary); color: white; border: none; padding: 12px; border-radius: 8px;
+  font-size: 15px; font-weight: 600; cursor: pointer; width: 100%; }
+.btn-login:disabled { opacity: 0.5; }
+#btn-logout { display: none; background: rgba(255,255,255,0.15); color: white;
+  border: 1px solid rgba(255,255,255,0.4); border-radius: 8px; padding: 6px 10px;
+  font-size: 13px; cursor: pointer; }
+
 .empty { text-align: center; color: var(--muted); padding: 50px 20px; font-size: 14px; }
 .empty .big { font-size: 42px; margin-bottom: 8px; }
 .spinner { display: inline-block; width: 18px; height: 18px; border: 3px solid var(--border);
@@ -84,10 +103,25 @@ body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Ro
 </head>
 <body>
 
+<div id="login-screen" style="display:none;">
+  <div class="login-card">
+    <h1>📦 Stock</h1>
+    <div class="sub">Claudia Adorno · ingresá con tu cuenta del sistema</div>
+    <label>Email</label>
+    <input id="login-email" type="email" autocomplete="username" placeholder="tu-email@ejemplo.com">
+    <label>Contraseña</label>
+    <input id="login-pass" type="password" autocomplete="current-password" placeholder="••••••••">
+    <div class="login-error" id="login-error"></div>
+    <button class="btn-login" id="btn-login" onclick="doLogin()">Entrar →</button>
+  </div>
+</div>
+
+<div id="app" style="display:none;">
 <div class="header">
   <span style="font-size:22px;">📦</span>
   <span class="title">Stock <span class="sub">Claudia Adorno · Alcorta · Unicenter · Oficina</span></span>
   <button id="btn-install">⬇ Instalar</button>
+  <button id="btn-logout" onclick="doLogout()" title="Cerrar sesión">👋 Salir</button>
 </div>
 
 <div class="search-wrap">
@@ -105,6 +139,7 @@ body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Ro
 <div id="resultados">
   <div class="empty"><div class="big">📦</div>Buscá un artículo por SKU o descripción<br>para ver stock y precio en los 3 locales.</div>
 </div>
+</div>
 
 <script>
 // ═══════════════════════════════════════════════════════════════════
@@ -113,7 +148,62 @@ body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Ro
 const SUPA_URL = 'https://kwwiykssrpabncpqtmwi.supabase.co';
 const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt3d2l5a3NzcnBhYm5jcHF0bXdpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzNjI1NTQsImV4cCI6MjA5NDkzODU1NH0.O1VhKdjPahnJJ9qXcQuSKQbnKGhsEZqYmjDEfRuRpkc';
 const sb = window.supabase.createClient(SUPA_URL, SUPA_KEY, {
-  auth: { persistSession: false }
+  auth: { persistSession: true, autoRefreshToken: true, storageKey: 'stock-adorno-auth' }
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// AUTH — mismas credenciales que el resto del sistema (RRHH)
+// ═══════════════════════════════════════════════════════════════════
+function mostrarLogin() {
+  document.getElementById('login-screen').style.display = '';
+  document.getElementById('app').style.display = 'none';
+}
+function mostrarApp() {
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('app').style.display = '';
+  document.getElementById('btn-logout').style.display = '';
+  setTimeout(() => document.getElementById('q').focus(), 100);
+}
+
+async function doLogin() {
+  const email = document.getElementById('login-email').value.trim();
+  const pass = document.getElementById('login-pass').value;
+  const errEl = document.getElementById('login-error');
+  const btn = document.getElementById('btn-login');
+  errEl.textContent = '';
+  if (!email || !pass) { errEl.textContent = 'Completá email y contraseña.'; return; }
+  btn.disabled = true; btn.textContent = 'Entrando…';
+  try {
+    const { error } = await sb.auth.signInWithPassword({ email, password: pass });
+    if (error) throw new Error('Email o contraseña incorrectos.');
+    // Verificar que sea usuario activo del sistema (RLS lo exige)
+    const { error: e2 } = await sb.from('stock_articulos').select('sku').limit(1);
+    if (e2) {
+      await sb.auth.signOut();
+      throw new Error('Tu usuario no está activo en el sistema.');
+    }
+    mostrarApp();
+  } catch (e) {
+    errEl.textContent = e.message;
+  } finally {
+    btn.disabled = false; btn.textContent = 'Entrar →';
+  }
+}
+
+async function doLogout() {
+  await sb.auth.signOut();
+  location.reload();
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
+  const { data: { session } } = await sb.auth.getSession();
+  if (session) mostrarApp(); else mostrarLogin();
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && document.getElementById('login-screen').style.display !== 'none'
+      && (document.activeElement?.id === 'login-email' || document.activeElement?.id === 'login-pass')) {
+    doLogin();
+  }
 });
 
 const LOCALES = ['alcorta', 'unicenter', 'oficina'];
