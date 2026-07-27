@@ -29,10 +29,6 @@ body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Ro
   display: flex; align-items: center; gap: 10px; position: sticky; top: 0; z-index: 50; }
 .header .title { font-size: 17px; font-weight: 700; flex: 1; }
 .header .sub { font-size: 11px; opacity: 0.85; display: block; font-weight: 400; }
-#btn-install { display: none; background: rgba(255,255,255,0.15); color: white;
-  border: 1px solid rgba(255,255,255,0.4); border-radius: 8px; padding: 6px 12px;
-  font-size: 13px; cursor: pointer; }
-
 .tabs { display: flex; background: white; border-bottom: 1px solid var(--border); padding: 0 12px;
   gap: 2px; position: sticky; top: 58px; z-index: 45; }
 .tab { padding: 11px 16px; font-size: 14px; font-weight: 600; color: var(--muted); border: none;
@@ -102,10 +98,6 @@ body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Ro
 .btn-login { background: var(--primary); color: white; border: none; padding: 12px; border-radius: 8px;
   font-size: 15px; font-weight: 600; cursor: pointer; width: 100%; }
 .btn-login:disabled { opacity: 0.5; }
-#btn-logout { display: none; background: rgba(255,255,255,0.15); color: white;
-  border: 1px solid rgba(255,255,255,0.4); border-radius: 8px; padding: 6px 10px;
-  font-size: 13px; cursor: pointer; }
-
 .kebab-wrap { position: relative; }
 #kebab-btn { background: white; border: 2px solid var(--border); border-radius: 10px;
   padding: 0 14px; font-size: 20px; cursor: pointer; height: 100%; min-height: 46px; }
@@ -114,11 +106,11 @@ body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Ro
   min-width: 190px; z-index: 60; padding: 6px; }
 .kebab-menu.open { display: block; }
 .kebab-menu button { display: block; width: 100%; text-align: left; background: white; border: none;
-  border-radius: 6px; padding: 10px; font-size: 14px; cursor: pointer; }
+  border-radius: 6px; padding: 10px; font-size: 14px; cursor: pointer; color: var(--text); }
 .kebab-menu button:hover { background: #f3f4f6; }
-.btn-pedirimg { background: white; border: 1.5px solid #f59e0b; color: #92400e;
-  border-radius: 8px; padding: 6px 12px; font-size: 13px; cursor: pointer; display: none; margin-right: 6px; }
-.btn-pedirimg.show { display: inline-block; }
+.thumb.nofoto { display: flex; align-items: center; justify-content: center;
+  border: 2px dashed #f59e0b; background: #fffbeb; cursor: pointer; font-size: 24px; }
+.thumb.nofoto:hover { background: #fef3c7; }
 #view-espalma { padding: 14px 16px 40px; max-width: 760px; margin: 0 auto; }
 .esp-wrap { overflow-x: auto; border-radius: 12px; box-shadow: var(--shadow); }
 .esp-tabla { width: 100%; border-collapse: collapse; background: white; font-size: 13px; }
@@ -663,11 +655,16 @@ async function cargarImagenes(skus) {
       }
     }
   } catch (_) { /* sin imágenes, no pasa nada */ }
-  // Los que quedaron sin foto → mostrar botón "pedir foto"
+  // Los que quedaron sin foto → cámara en el hueco de la imagen para pedirla
   for (const sku of skus) {
     if (!conFoto.has(sku)) {
-      const b = document.getElementById('pedirimg-' + cssId(sku));
-      if (b) b.classList.add('show');
+      const div = document.getElementById('img-' + cssId(sku));
+      if (div) {
+        div.innerHTML = '📷';
+        div.classList.add('nofoto');
+        div.title = 'Sin foto — tocá para pedirle a Oficina que la suba';
+        div.onclick = () => solicitarImagen(sku);
+      }
     }
   }
 }
@@ -676,8 +673,8 @@ async function cargarImagenes(skus) {
 const EMPLEADAS_IMAGENES = [1, 5];  // Marisa Contreras · Analía Rivera
 
 async function solicitarImagen(sku) {
-  const btn = document.getElementById('pedirimg-' + cssId(sku));
-  if (btn) { btn.disabled = true; btn.textContent = '⏳'; }
+  const btn = document.getElementById('img-' + cssId(sku));
+  if (btn) { btn.onclick = null; btn.innerHTML = '⏳'; }
   try {
     const art = (ultimoResultado?.articulos || []).find(a => a.sku === sku);
     const desc = art?.descripcion ? ` (${art.descripcion})` : '';
@@ -692,10 +689,10 @@ async function solicitarImagen(sku) {
       });
     }
     toast('📷 Listo — le avisamos a Oficina que falta la foto de ' + sku);
-    if (btn) { btn.textContent = '✓ Pedida'; }
+    if (btn) { btn.innerHTML = '✓'; btn.title = 'Foto pedida a Oficina'; }
   } catch (e) {
     toast('No pude enviar la solicitud: ' + (e.message || e));
-    if (btn) { btn.disabled = false; btn.textContent = '📷 Pedir foto'; }
+    if (btn) { btn.innerHTML = '📷'; btn.onclick = () => solicitarImagen(sku); }
   }
 }
 
@@ -724,10 +721,7 @@ function cardHtml(a) {
     <div class="stocks">${chips}</div>
     <div class="card-foot">
       <span class="frescura">${frescura(a.updated_at)}</span>
-      <span>
-        <button class="btn-pedirimg" id="pedirimg-${cssId(a.sku)}" onclick="solicitarImagen('${escAttr(a.sku)}')" title="Avisarle a Oficina que a este artículo le falta la foto">📷 Pedir foto</button>
-        <button class="btn-live" id="live-${cssId(a.sku)}" onclick="verificarEnVivo('${escAttr(a.sku)}')" title="Verificar stock en vivo contra los servers">⚡</button>
-      </span>
+      <button class="btn-live" id="live-${cssId(a.sku)}" onclick="verificarEnVivo('${escAttr(a.sku)}')" title="Verificar stock en vivo contra los servers">⚡</button>
     </div>
   </div>`;
 }
