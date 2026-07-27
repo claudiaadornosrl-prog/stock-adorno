@@ -100,6 +100,24 @@ body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Ro
   border: 1px solid rgba(255,255,255,0.4); border-radius: 8px; padding: 6px 10px;
   font-size: 13px; cursor: pointer; }
 
+.kebab-wrap { position: relative; }
+#kebab-btn { background: white; border: 2px solid var(--border); border-radius: 10px;
+  padding: 0 14px; font-size: 20px; cursor: pointer; height: 100%; min-height: 46px; }
+.kebab-menu { display: none; position: absolute; right: 0; top: calc(100% + 6px); background: white;
+  border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,0.14);
+  min-width: 190px; z-index: 60; padding: 6px; }
+.kebab-menu.open { display: block; }
+.kebab-menu button { display: block; width: 100%; text-align: left; background: white; border: none;
+  border-radius: 6px; padding: 10px; font-size: 14px; cursor: pointer; }
+.kebab-menu button:hover { background: #f3f4f6; }
+.btn-pedirimg { background: white; border: 1.5px solid #f59e0b; color: #92400e;
+  border-radius: 8px; padding: 6px 12px; font-size: 13px; cursor: pointer; display: none; margin-right: 6px; }
+.btn-pedirimg.show { display: inline-block; }
+#toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: #111827;
+  color: white; padding: 10px 18px; border-radius: 10px; font-size: 14px; z-index: 100;
+  opacity: 0; transition: opacity 0.25s; pointer-events: none; max-width: 90vw; text-align: center; }
+#toast.show { opacity: 1; }
+
 .empty { text-align: center; color: var(--muted); padding: 50px 20px; font-size: 14px; }
 .empty .big { font-size: 42px; margin-bottom: 8px; }
 .spinner { display: inline-block; width: 18px; height: 18px; border: 3px solid var(--border);
@@ -130,8 +148,6 @@ body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Ro
 <div class="header">
   <span style="font-size:22px;">📦</span>
   <span class="title">Stock <span class="sub">Claudia Adorno · Alcorta · Unicenter · Oficina</span></span>
-  <button id="btn-install" title="Instalar la app en este dispositivo">⬇</button>
-  <button id="btn-logout" onclick="doLogout()" title="Cerrar sesión">👋</button>
 </div>
 
 <div class="search-wrap">
@@ -139,6 +155,13 @@ body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Ro
     <input id="q" type="search" placeholder="SKU o descripción…" autocomplete="off" autofocus
            enterkeyhint="search">
     <button onclick="buscar()" aria-label="Buscar">🔍</button>
+    <div class="kebab-wrap">
+      <button id="kebab-btn" onclick="toggleKebab(event)" title="Menú" aria-label="Menú">⋮</button>
+      <div class="kebab-menu" id="kebab-menu">
+        <button id="btn-install" style="display:none;">⬇ Instalar la app</button>
+        <button onclick="doLogout()">👋 Cerrar sesión</button>
+      </div>
+    </div>
   </div>
   <div class="filtros">
     <span class="hint" style="margin:0;flex:1;">Escribí al menos 2 letras o números. Ej: <b>044</b> o <b>dispenser</b></span>
@@ -151,6 +174,8 @@ body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Ro
   <div class="empty"><div class="big">📦</div>Buscá un artículo por SKU o descripción<br>para ver stock y precio en los 3 locales.</div>
 </div>
 </div>
+
+<div id="toast"></div>
 
 <script>
 // ═══════════════════════════════════════════════════════════════════
@@ -181,7 +206,6 @@ function mostrarLogin() {
 function mostrarApp() {
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('app').style.display = '';
-  document.getElementById('btn-logout').style.display = '';
   setTimeout(() => document.getElementById('q').focus(), 100);
 }
 
@@ -264,6 +288,24 @@ function actualizarChipFiltro() {
   document.getElementById('chk-exacto').classList.toggle('on', soloExacto);
 }
 actualizarChipFiltro();
+
+function toggleKebab(ev) {
+  ev.stopPropagation();
+  document.getElementById('kebab-menu').classList.toggle('open');
+}
+document.addEventListener('click', e => {
+  const m = document.getElementById('kebab-menu');
+  if (m && m.classList.contains('open') && !e.target.closest('.kebab-wrap')) m.classList.remove('open');
+});
+
+let toastTimer = null;
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 3500);
+}
 
 let debounceTimer = null;
 document.getElementById('q').addEventListener('input', () => {
@@ -350,9 +392,11 @@ function render(articulos, q) {
 
 async function cargarImagenes(skus) {
   if (!skus.length) return;
+  let conFoto = new Set();
   try {
     const { data } = await sb.from('stock_imagenes').select('sku, url').in('sku', skus);
     for (const r of (data || [])) {
+      conFoto.add(r.sku);
       const div = document.getElementById('img-' + cssId(r.sku));
       if (div) {
         div.innerHTML = `<img src="${r.url}" loading="lazy" alt="" onclick="window.open('${r.url}', '_blank')">`;
@@ -360,6 +404,40 @@ async function cargarImagenes(skus) {
       }
     }
   } catch (_) { /* sin imágenes, no pasa nada */ }
+  // Los que quedaron sin foto → mostrar botón "pedir foto"
+  for (const sku of skus) {
+    if (!conFoto.has(sku)) {
+      const b = document.getElementById('pedirimg-' + cssId(sku));
+      if (b) b.classList.add('show');
+    }
+  }
+}
+
+// ── Solicitar imagen: push a Marisa y Analía (Oficina) ──
+const EMPLEADAS_IMAGENES = [1, 5];  // Marisa Contreras · Analía Rivera
+
+async function solicitarImagen(sku) {
+  const btn = document.getElementById('pedirimg-' + cssId(sku));
+  if (btn) { btn.disabled = true; btn.textContent = '⏳'; }
+  try {
+    const art = (ultimoResultado?.articulos || []).find(a => a.sku === sku);
+    const desc = art?.descripcion ? ` (${art.descripcion})` : '';
+    for (const empId of EMPLEADAS_IMAGENES) {
+      await sb.functions.invoke('enviar-push', {
+        body: {
+          empleado_id: empId,
+          title: '📷 Falta imagen de producto',
+          body: `Al SKU ${sku}${desc} le falta imagen. ¿La subís al Drive?`,
+          tag: 'img-' + sku,
+        }
+      });
+    }
+    toast('📷 Listo — le avisamos a Oficina que falta la foto de ' + sku);
+    if (btn) { btn.textContent = '✓ Pedida'; }
+  } catch (e) {
+    toast('No pude enviar la solicitud: ' + (e.message || e));
+    if (btn) { btn.disabled = false; btn.textContent = '📷 Pedir foto'; }
+  }
 }
 
 function cardHtml(a) {
@@ -387,7 +465,10 @@ function cardHtml(a) {
     <div class="stocks">${chips}</div>
     <div class="card-foot">
       <span class="frescura">${frescura(a.updated_at)}</span>
-      <button class="btn-live" id="live-${cssId(a.sku)}" onclick="verificarEnVivo('${escAttr(a.sku)}')" title="Verificar stock en vivo contra los servers">⚡</button>
+      <span>
+        <button class="btn-pedirimg" id="pedirimg-${cssId(a.sku)}" onclick="solicitarImagen('${escAttr(a.sku)}')" title="Avisarle a Oficina que a este artículo le falta la foto">📷 Pedir foto</button>
+        <button class="btn-live" id="live-${cssId(a.sku)}" onclick="verificarEnVivo('${escAttr(a.sku)}')" title="Verificar stock en vivo contra los servers">⚡</button>
+      </span>
     </div>
   </div>`;
 }
