@@ -33,8 +33,14 @@ body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Ro
   border: 1px solid rgba(255,255,255,0.4); border-radius: 8px; padding: 6px 12px;
   font-size: 13px; cursor: pointer; }
 
+.tabs { display: flex; background: white; border-bottom: 1px solid var(--border); padding: 0 12px;
+  gap: 2px; position: sticky; top: 58px; z-index: 45; }
+.tab { padding: 11px 16px; font-size: 14px; font-weight: 600; color: var(--muted); border: none;
+  background: none; cursor: pointer; border-bottom: 3px solid transparent; }
+.tab.active { color: var(--primary); border-bottom-color: var(--primary); }
+
 .search-wrap { padding: 12px 16px; background: white; border-bottom: 1px solid var(--border);
-  position: sticky; top: 58px; z-index: 40; }
+  position: sticky; top: 101px; z-index: 40; }
 .search-box { display: flex; gap: 8px; }
 .search-box input { flex: 1; padding: 12px 14px; font-size: 16px; border: 2px solid var(--border);
   border-radius: 10px; outline: none; }
@@ -113,6 +119,27 @@ body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Ro
 .btn-pedirimg { background: white; border: 1.5px solid #f59e0b; color: #92400e;
   border-radius: 8px; padding: 6px 12px; font-size: 13px; cursor: pointer; display: none; margin-right: 6px; }
 .btn-pedirimg.show { display: inline-block; }
+#view-espalma { padding: 14px 16px 40px; max-width: 760px; margin: 0 auto; }
+.esp-wrap { overflow-x: auto; border-radius: 12px; box-shadow: var(--shadow); }
+.esp-tabla { width: 100%; border-collapse: collapse; background: white; font-size: 13px; }
+.esp-tabla th { background: var(--primary); color: white; padding: 10px 9px; text-align: left;
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap; }
+.esp-tabla td { padding: 10px 9px; border-top: 1px solid var(--border); vertical-align: top; }
+.esp-tabla tr:nth-child(even) td { background: #f9fafb; }
+.esp-modelo { font-weight: 700; }
+.esp-nota { font-size: 11px; color: var(--muted); }
+.esp-precio { font-weight: 800; color: var(--primary); white-space: nowrap; }
+.btn-edit-row { background: none; border: 1px solid var(--border); border-radius: 6px;
+  padding: 3px 8px; font-size: 12px; cursor: pointer; }
+#esp-modal-bg { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.45);
+  z-index: 80; align-items: center; justify-content: center; padding: 16px; }
+#esp-modal-bg.open { display: flex; }
+.esp-modal { background: white; border-radius: 14px; padding: 20px; width: 100%; max-width: 420px;
+  max-height: 90vh; overflow-y: auto; }
+.esp-modal label { font-size: 11px; font-weight: 600; color: var(--muted); display: block;
+  margin: 10px 0 4px; text-transform: uppercase; letter-spacing: 0.04em; }
+.esp-modal input { width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 14px; }
+
 #toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: #111827;
   color: white; padding: 10px 18px; border-radius: 10px; font-size: 14px; z-index: 100;
   opacity: 0; transition: opacity 0.25s; pointer-events: none; max-width: 90vw; text-align: center; }
@@ -150,6 +177,12 @@ body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Ro
   <span class="title">Stock <span class="sub">Claudia Adorno · Alcorta · Unicenter · Oficina</span></span>
 </div>
 
+<div class="tabs">
+  <button class="tab active" id="tab-stock" onclick="verTab('stock')">🔍 Stock</button>
+  <button class="tab" id="tab-espalma" onclick="verTab('espalma')">🛁 Espalma</button>
+</div>
+
+<div id="view-stock">
 <div class="search-wrap">
   <div class="search-box">
     <input id="q" type="search" placeholder="SKU o descripción…" autocomplete="off" autofocus
@@ -173,6 +206,34 @@ body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Ro
 <div id="resultados">
   <div class="empty"><div class="big">📦</div>Buscá un artículo por SKU o descripción<br>para ver stock y precio en los 3 locales.</div>
 </div>
+</div>
+
+<div id="view-espalma" style="display:none;">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;gap:10px;">
+    <div style="font-size:13px;color:var(--muted);">Sets Espalma · toalla y toallón: medidas, gramaje y precio</div>
+    <button class="btn-live" id="btn-esp-add" style="display:none;" onclick="abrirEspalmaEdit(null)" title="Agregar modelo">＋</button>
+  </div>
+  <div id="esp-contenido"><div class="empty"><span class="spinner"></span></div></div>
+</div>
+</div>
+
+<div id="esp-modal-bg">
+  <div class="esp-modal">
+    <h3 id="esp-modal-titulo" style="margin:0;font-size:17px;">Modelo</h3>
+    <label>Modelo</label><input id="esp-modelo" placeholder="Ej: Egipcio">
+    <label>Medida toalla</label><input id="esp-toalla" placeholder="Ej: 50 x 90">
+    <label>Medida toallón</label><input id="esp-toallon" placeholder="Ej: 80 x 150">
+    <label>Gramaje</label><input id="esp-gramaje" placeholder="Ej: 600 g/m²">
+    <label>Precio del set</label><input id="esp-precio" type="number" inputmode="decimal" placeholder="0">
+    <label>Nota (opcional)</label><input id="esp-nota" placeholder="Aclaraciones">
+    <label>Orden</label><input id="esp-orden" type="number" placeholder="1, 2, 3…">
+    <div class="login-error" id="esp-error" style="margin-top:8px;"></div>
+    <div style="display:flex;gap:8px;margin-top:14px;">
+      <button class="btn-login" style="flex:1;" onclick="guardarEspalma()">Guardar</button>
+      <button id="esp-borrar" style="display:none;background:#fee2e2;color:#991b1b;border:none;border-radius:8px;padding:12px;cursor:pointer;" onclick="borrarEspalma()">🗑</button>
+      <button style="background:white;border:1px solid var(--border);border-radius:8px;padding:12px;cursor:pointer;" onclick="cerrarEspalmaModal()">Cancelar</button>
+    </div>
+  </div>
 </div>
 
 <div id="toast"></div>
@@ -206,6 +267,7 @@ function mostrarLogin() {
 function mostrarApp() {
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('app').style.display = '';
+  detectarAdmin();
   setTimeout(() => document.getElementById('q').focus(), 100);
 }
 
@@ -288,6 +350,128 @@ function actualizarChipFiltro() {
   document.getElementById('chk-exacto').classList.toggle('on', soloExacto);
 }
 actualizarChipFiltro();
+
+// ═══ Tabs ═══
+let espCargado = false;
+function verTab(t) {
+  document.getElementById('view-stock').style.display = t === 'stock' ? '' : 'none';
+  document.getElementById('view-espalma').style.display = t === 'espalma' ? '' : 'none';
+  document.getElementById('tab-stock').classList.toggle('active', t === 'stock');
+  document.getElementById('tab-espalma').classList.toggle('active', t === 'espalma');
+  if (t === 'espalma' && !espCargado) { espCargado = true; cargarEspalma(); }
+}
+
+// ═══ Espalma ═══
+let esAdmin = false;
+let espCache = [];
+
+async function detectarAdmin() {
+  try {
+    const { data } = await sb.rpc('rrhh_current_user');
+    esAdmin = data?.rol === 'admin';
+  } catch (_) { esAdmin = false; }
+  document.getElementById('btn-esp-add').style.display = esAdmin ? '' : 'none';
+  if (espCargado) renderEspalma();
+}
+
+async function cargarEspalma() {
+  const cont = document.getElementById('esp-contenido');
+  cont.innerHTML = '<div class="empty"><span class="spinner"></span></div>';
+  try {
+    const { data, error } = await sb.from('espalma_modelos')
+      .select('*').order('orden').order('modelo');
+    if (error) throw error;
+    espCache = data || [];
+    renderEspalma();
+  } catch (e) {
+    cont.innerHTML = `<div class="empty">⚠️ Error: ${escHtml(e.message)}</div>`;
+  }
+}
+
+function renderEspalma() {
+  const cont = document.getElementById('esp-contenido');
+  if (!espCache.length) {
+    cont.innerHTML = '<div class="empty"><div class="big">🛁</div>Todavía no hay modelos cargados.' +
+      (esAdmin ? '<br>Usá el botón ＋ para agregar el primero.' : '') + '</div>';
+    return;
+  }
+  const filas = espCache.map(m => `
+    <tr>
+      <td><span class="esp-modelo">${escHtml(m.modelo)}</span>
+          ${m.nota ? `<div class="esp-nota">${escHtml(m.nota)}</div>` : ''}</td>
+      <td>${escHtml(m.toalla || '—')}</td>
+      <td>${escHtml(m.toallon || '—')}</td>
+      <td>${escHtml(m.gramaje || '—')}</td>
+      <td class="esp-precio">${m.precio != null ? fmt$(m.precio) : '—'}</td>
+      ${esAdmin ? `<td><button class="btn-edit-row" onclick="abrirEspalmaEdit(${m.id})" title="Editar">✏️</button></td>` : ''}
+    </tr>`).join('');
+  cont.innerHTML = `<div class="esp-wrap"><table class="esp-tabla">
+    <thead><tr>
+      <th>Modelo</th><th>Toalla</th><th>Toallón</th><th>Gramaje</th><th>Precio set</th>${esAdmin ? '<th></th>' : ''}
+    </tr></thead>
+    <tbody>${filas}</tbody>
+  </table></div>`;
+}
+
+let espEditId = null;
+function abrirEspalmaEdit(id) {
+  espEditId = id;
+  const m = id ? espCache.find(x => x.id === id) : null;
+  document.getElementById('esp-modal-titulo').textContent = m ? 'Editar ' + m.modelo : 'Nuevo modelo';
+  document.getElementById('esp-modelo').value = m?.modelo || '';
+  document.getElementById('esp-toalla').value = m?.toalla || '';
+  document.getElementById('esp-toallon').value = m?.toallon || '';
+  document.getElementById('esp-gramaje').value = m?.gramaje || '';
+  document.getElementById('esp-precio').value = m?.precio ?? '';
+  document.getElementById('esp-nota').value = m?.nota || '';
+  document.getElementById('esp-orden').value = m?.orden ?? (espCache.length + 1);
+  document.getElementById('esp-error').textContent = '';
+  document.getElementById('esp-borrar').style.display = m ? '' : 'none';
+  document.getElementById('esp-modal-bg').classList.add('open');
+}
+function cerrarEspalmaModal() {
+  document.getElementById('esp-modal-bg').classList.remove('open');
+}
+
+async function guardarEspalma() {
+  const errEl = document.getElementById('esp-error');
+  const modelo = document.getElementById('esp-modelo').value.trim();
+  if (!modelo) { errEl.textContent = 'Poné el nombre del modelo.'; return; }
+  const fila = {
+    modelo,
+    toalla: document.getElementById('esp-toalla').value.trim() || null,
+    toallon: document.getElementById('esp-toallon').value.trim() || null,
+    gramaje: document.getElementById('esp-gramaje').value.trim() || null,
+    precio: parseFloat(document.getElementById('esp-precio').value) || null,
+    nota: document.getElementById('esp-nota').value.trim() || null,
+    orden: parseInt(document.getElementById('esp-orden').value) || 0,
+    updated_at: new Date().toISOString(),
+  };
+  try {
+    if (espEditId) {
+      const { error } = await sb.from('espalma_modelos').update(fila).eq('id', espEditId);
+      if (error) throw error;
+    } else {
+      const { error } = await sb.from('espalma_modelos').insert(fila);
+      if (error) throw error;
+    }
+    cerrarEspalmaModal();
+    toast('✓ Guardado');
+    cargarEspalma();
+  } catch (e) { errEl.textContent = e.message; }
+}
+
+async function borrarEspalma() {
+  if (!espEditId) return;
+  if (!confirm('¿Eliminar este modelo?')) return;
+  try {
+    const { error } = await sb.from('espalma_modelos').delete().eq('id', espEditId);
+    if (error) throw error;
+    cerrarEspalmaModal();
+    toast('🗑 Eliminado');
+    cargarEspalma();
+  } catch (e) { document.getElementById('esp-error').textContent = e.message; }
+}
 
 function toggleKebab(ev) {
   ev.stopPropagation();
