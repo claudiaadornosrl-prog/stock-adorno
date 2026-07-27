@@ -140,6 +140,18 @@ body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Ro
   margin: 10px 0 4px; text-transform: uppercase; letter-spacing: 0.04em; }
 .esp-modal input { width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 14px; }
 
+.esp-fila-click { cursor: pointer; }
+.esp-fila-click:hover td { background: #eef4fd !important; }
+.espstock-tabla { width: 100%; border-collapse: collapse; font-size: 13px; }
+.espstock-tabla th { font-size: 10px; text-transform: uppercase; color: var(--muted);
+  text-align: center; padding: 6px 4px; border-bottom: 1px solid var(--border); }
+.espstock-tabla th:first-child { text-align: left; }
+.espstock-tabla td { padding: 7px 4px; border-bottom: 1px solid #f3f4f6; text-align: center;
+  font-weight: 700; }
+.espstock-tabla td:first-child { text-align: left; font-weight: 500; }
+.n-ok { color: var(--green-tx); }
+.n-cero { color: var(--red-tx); opacity: 0.7; }
+
 #toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: #111827;
   color: white; padding: 10px 18px; border-radius: 10px; font-size: 14px; z-index: 100;
   opacity: 0; transition: opacity 0.25s; pointer-events: none; max-width: 90vw; text-align: center; }
@@ -217,6 +229,16 @@ body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Ro
 </div>
 </div>
 
+<div id="espstock-modal-bg" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:80; align-items:center; justify-content:center; padding:16px;">
+  <div class="esp-modal" style="max-width:480px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+      <h3 id="espstock-titulo" style="margin:0;font-size:17px;">Stock por color</h3>
+      <button style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--muted);" onclick="cerrarEspalmaStock()">×</button>
+    </div>
+    <div id="espstock-contenido" style="margin-top:12px;"><span class="spinner"></span></div>
+  </div>
+</div>
+
 <div id="esp-modal-bg">
   <div class="esp-modal">
     <h3 id="esp-modal-titulo" style="margin:0;font-size:17px;">Modelo</h3>
@@ -227,6 +249,7 @@ body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Ro
     <label>Precio del set</label><input id="esp-precio" type="number" inputmode="decimal" placeholder="0">
     <label>Nota (opcional)</label><input id="esp-nota" placeholder="Aclaraciones">
     <label>Orden</label><input id="esp-orden" type="number" placeholder="1, 2, 3…">
+    <label>Patrón de stock (avanzado)</label><input id="esp-patron" placeholder="Ej: SET AMERICA%">
     <div class="login-error" id="esp-error" style="margin-top:8px;"></div>
     <div style="display:flex;gap:8px;margin-top:14px;">
       <button class="btn-login" style="flex:1;" onclick="guardarEspalma()">Guardar</button>
@@ -396,14 +419,14 @@ function renderEspalma() {
     return;
   }
   const filas = espCache.map(m => `
-    <tr>
+    <tr class="${m.patron ? 'esp-fila-click' : ''}" ${m.patron ? `onclick="abrirEspalmaStock(${m.id})" title="Ver stock por color"` : ''}>
       <td><span class="esp-modelo">${escHtml(m.modelo)}</span>
           ${m.nota ? `<div class="esp-nota">${escHtml(m.nota)}</div>` : ''}</td>
       <td>${escHtml(m.toalla || '—')}</td>
       <td>${escHtml(m.toallon || '—')}</td>
       <td>${escHtml(m.gramaje || '—')}</td>
       <td class="esp-precio">${m.precio != null ? fmt$(m.precio) : '—'}</td>
-      ${esAdmin ? `<td><button class="btn-edit-row" onclick="abrirEspalmaEdit(${m.id})" title="Editar">✏️</button></td>` : ''}
+      ${esAdmin ? `<td><button class="btn-edit-row" onclick="event.stopPropagation();abrirEspalmaEdit(${m.id})" title="Editar">✏️</button></td>` : ''}
     </tr>`).join('');
   cont.innerHTML = `<div class="esp-wrap"><table class="esp-tabla">
     <thead><tr>
@@ -411,6 +434,56 @@ function renderEspalma() {
     </tr></thead>
     <tbody>${filas}</tbody>
   </table></div>`;
+}
+
+async function abrirEspalmaStock(id) {
+  const m = espCache.find(x => x.id === id);
+  if (!m || !m.patron) return;
+  document.getElementById('espstock-titulo').textContent = m.modelo + ' · stock por color';
+  const cont = document.getElementById('espstock-contenido');
+  cont.innerHTML = '<div style="text-align:center;padding:24px;"><span class="spinner"></span></div>';
+  document.getElementById('espstock-modal-bg').style.display = 'flex';
+  try {
+    const { data, error } = await sb.from('stock_articulos')
+      .select('sku, descripcion, local, stock')
+      .ilike('descripcion', m.patron)
+      .limit(400);
+    if (error) throw error;
+    // Agrupar por sku
+    const map = {};
+    for (const r of (data || [])) {
+      const a = map[r.sku] || (map[r.sku] = { sku: r.sku, desc: r.descripcion || r.sku, stocks: {} });
+      a.stocks[r.local] = parseFloat(r.stock || 0);
+    }
+    let items = Object.values(map);
+    if (!items.length) {
+      cont.innerHTML = '<div class="empty">No encontré artículos para este modelo.</div>';
+      return;
+    }
+    // Sacar el prefijo común de palabras para mostrar solo el color
+    const listas = items.map(i => i.desc.split(/\s+/));
+    let nComunes = 0;
+    while (listas.every(w => w.length > nComunes + 1 && w[nComunes] === listas[0][nComunes])) nComunes++;
+    for (const i of items) {
+      i.color = i.desc.split(/\s+/).slice(nComunes).join(' ') || i.desc;
+    }
+    items.sort((a, b) => a.color.localeCompare(b.color));
+    const celda = st => st === undefined ? '<td>—</td>'
+      : `<td class="${st > 0 ? 'n-ok' : 'n-cero'}">${Number.isInteger(st) ? st : st.toFixed(1)}</td>`;
+    cont.innerHTML = `<div style="max-height:60vh;overflow-y:auto;"><table class="espstock-tabla">
+      <thead><tr><th>Color</th><th>Alcorta</th><th>Unicenter</th><th>Oficina</th></tr></thead>
+      <tbody>${items.map(i => `<tr>
+        <td title="${escHtml(i.sku)}">${escHtml(i.color)}</td>
+        ${celda(i.stocks.alcorta)}${celda(i.stocks.unicenter)}${celda(i.stocks.oficina)}
+      </tr>`).join('')}</tbody>
+    </table></div>
+    <div style="font-size:11px;color:var(--muted);margin-top:8px;">${items.length} colores · tocá el nombre para ver el SKU</div>`;
+  } catch (e) {
+    cont.innerHTML = `<div class="empty">⚠️ ${escHtml(e.message)}</div>`;
+  }
+}
+function cerrarEspalmaStock() {
+  document.getElementById('espstock-modal-bg').style.display = 'none';
 }
 
 let espEditId = null;
@@ -425,6 +498,7 @@ function abrirEspalmaEdit(id) {
   document.getElementById('esp-precio').value = m?.precio ?? '';
   document.getElementById('esp-nota').value = m?.nota || '';
   document.getElementById('esp-orden').value = m?.orden ?? (espCache.length + 1);
+  document.getElementById('esp-patron').value = m?.patron || '';
   document.getElementById('esp-error').textContent = '';
   document.getElementById('esp-borrar').style.display = m ? '' : 'none';
   document.getElementById('esp-modal-bg').classList.add('open');
@@ -445,6 +519,7 @@ async function guardarEspalma() {
     precio: parseFloat(document.getElementById('esp-precio').value) || null,
     nota: document.getElementById('esp-nota').value.trim() || null,
     orden: parseInt(document.getElementById('esp-orden').value) || 0,
+    patron: document.getElementById('esp-patron').value.trim() || null,
     updated_at: new Date().toISOString(),
   };
   try {
