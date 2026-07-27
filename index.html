@@ -406,19 +406,27 @@ async function actualizarPreciosEspalma() {
   if (!conPatron.length) return;
   try {
     const resultados = await Promise.all(conPatron.map(m =>
-      sb.from('stock_articulos').select('precio')
-        .ilike('descripcion', m.patron).eq('local', 'alcorta')
-        .gt('precio', 0).limit(100)
+      sb.from('stock_articulos').select('sku, local, stock, precio')
+        .ilike('descripcion', m.patron).limit(400)
     ));
     let cambio = false;
     conPatron.forEach((m, idx) => {
       const filas = resultados[idx].data || [];
       if (!filas.length) return;
-      // Precio mas frecuente entre los colores (por si algun SKU quedo desactualizado)
+      // Precio mas frecuente (filas de alcorta con precio cargado)
       const cuenta = {};
-      for (const f of filas) cuenta[f.precio] = (cuenta[f.precio] || 0) + 1;
-      const precio = parseFloat(Object.entries(cuenta).sort((a, b) => b[1] - a[1])[0][0]);
-      if (precio && precio !== parseFloat(m.precio)) { m.precio = precio; cambio = true; }
+      for (const f of filas) if (f.local === 'alcorta' && f.precio > 0)
+        cuenta[f.precio] = (cuenta[f.precio] || 0) + 1;
+      const ordenadas = Object.entries(cuenta).sort((a, b) => b[1] - a[1]);
+      if (ordenadas.length) {
+        const precio = parseFloat(ordenadas[0][0]);
+        if (precio && precio !== parseFloat(m.precio)) { m.precio = precio; cambio = true; }
+      }
+      // Colores (SKUs) con stock en algun local
+      const porSku = {};
+      for (const f of filas) porSku[f.sku] = (porSku[f.sku] || 0) + parseFloat(f.stock || 0);
+      const n = Object.values(porSku).filter(t => t > 0).length;
+      if (m.colores_stock !== n) { m.colores_stock = n; cambio = true; }
     });
     if (cambio) renderEspalma();
   } catch (_) { /* si falla, quedan los precios guardados */ }
@@ -434,7 +442,8 @@ function renderEspalma() {
   const filas = espCache.map(m => `
     <tr class="${m.patron ? 'esp-fila-click' : ''}" ${m.patron ? `onclick="abrirEspalmaStock(${m.id})" title="Ver stock por color"` : ''}>
       <td><span class="esp-modelo">${escHtml(m.modelo)}</span>
-          ${m.nota ? `<div class="esp-nota">${escHtml(m.nota)}</div>` : ''}</td>
+          ${m.nota ? `<div class="esp-nota">${escHtml(m.nota)}</div>` : ''}
+          ${m.colores_stock != null ? `<div class="esp-nota">${m.colores_stock === 1 ? '1 color' : m.colores_stock + ' colores'} en stock</div>` : ''}</td>
       <td>${escHtml(m.toalla || '—')}</td>
       <td>${escHtml(m.toallon || '—')}</td>
       <td>${escHtml(m.gramaje || '—')}</td>
