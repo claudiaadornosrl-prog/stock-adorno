@@ -797,7 +797,6 @@ function mostrarVacio() {
   document.getElementById('resultados').innerHTML =
     `<div class="empty"><div class="big">📦</div>Buscá un artículo por SKU o descripción<br>para ver stock y precio en los 3 locales.${htmlRecientes()}</div>`;
 }
-mostrarVacio();
 
 // ── Compartir por WhatsApp ──
 const imgUrls = {};
@@ -1142,6 +1141,9 @@ document.getElementById('btn-install').addEventListener('click', async () => {
     alert('En iPhone: Compartir → "Agregar a pantalla de inicio".');
   }
 });
+
+// Estado inicial con búsquedas recientes (al final: ya está todo definido)
+mostrarVacio();
 </script>
 </body>
 </html>
