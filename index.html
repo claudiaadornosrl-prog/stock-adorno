@@ -191,6 +191,7 @@ body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Ro
     <input id="q" type="search" placeholder="SKU o descripción (mín. 2) · ej: 044 o dispenser" autocomplete="off" autofocus
            enterkeyhint="search">
     <button onclick="buscar()" aria-label="Buscar">🔍</button>
+    <button onclick="abrirScanner()" id="btn-scan" aria-label="Escanear código de barras" title="Escanear código de barras"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="display:block;"><path d="M4 7V5h2M20 7V5h-2M4 17v2h2M20 17v2h-2M7 8v8M10.5 8v8M13.5 8v8M17 8v8"/></svg></button>
     <div class="kebab-wrap">
       <button id="kebab-btn" onclick="toggleKebab(event)" title="Menú" aria-label="Menú">⋮</button>
       <div class="kebab-menu" id="kebab-menu">
@@ -215,6 +216,25 @@ body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Ro
   </div>
   <div id="esp-contenido"><div class="empty"><span class="spinner"></span></div></div>
 </div>
+</div>
+
+<div id="scan-modal-bg" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.85); z-index:90; flex-direction:column; align-items:center; justify-content:center; gap:14px;">
+  <video id="scan-video" autoplay playsinline style="width:92%; max-width:480px; border-radius:14px;"></video>
+  <div style="color:white; font-size:14px;">Apuntá al código de barras de la etiqueta</div>
+  <button onclick="cerrarScanner()" style="background:white;border:none;border-radius:10px;padding:10px 22px;font-size:15px;font-weight:600;cursor:pointer;">Cancelar</button>
+</div>
+
+<div id="tras-modal-bg" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:85; align-items:center; justify-content:center; padding:16px;">
+  <div style="background:white; border-radius:14px; padding:18px; width:100%; max-width:360px;">
+    <h3 id="tras-titulo" style="margin:0 0 4px; font-size:16px;"></h3>
+    <div id="tras-desc" style="font-size:13px; color:var(--muted); margin-bottom:12px;"></div>
+    <label style="font-size:13px; font-weight:600;">Cantidad</label>
+    <input id="tras-cant" type="number" min="1" value="1" inputmode="numeric" style="width:100%; padding:10px; font-size:16px; border:2px solid var(--border); border-radius:10px; margin:4px 0 14px; box-sizing:border-box;">
+    <div style="display:flex; gap:8px;">
+      <button class="btn-login" style="flex:1;" onclick="enviarTraslado()">📣 Enviar pedido</button>
+      <button style="background:white;border:1px solid var(--border);border-radius:8px;padding:12px;cursor:pointer;" onclick="cerrarTraslado()">Cancelar</button>
+    </div>
+  </div>
 </div>
 
 <div id="espstock-modal-bg" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:80; align-items:center; justify-content:center; padding:16px;">
@@ -460,17 +480,21 @@ function renderEspalma() {
   </table></div>`;
 }
 
-async function abrirEspalmaStock(id) {
+function abrirEspalmaStock(id) {
   const m = espCache.find(x => x.id === id);
   if (!m || !m.patron) return;
-  document.getElementById('espstock-titulo').textContent = m.modelo + ' · stock por color';
+  mostrarStockPorColor(m.modelo, m.patron);
+}
+
+async function mostrarStockPorColor(titulo, patron) {
+  document.getElementById('espstock-titulo').textContent = titulo + ' · stock por color';
   const cont = document.getElementById('espstock-contenido');
   cont.innerHTML = '<div style="text-align:center;padding:24px;"><span class="spinner"></span></div>';
   document.getElementById('espstock-modal-bg').style.display = 'flex';
   try {
     const { data, error } = await sb.from('stock_articulos')
       .select('sku, descripcion, local, stock')
-      .ilike('descripcion', m.patron)
+      .ilike('descripcion', patron)
       .limit(400);
     if (error) throw error;
     // Agrupar por sku
@@ -595,6 +619,7 @@ function toast(msg) {
 let debounceTimer = null;
 document.getElementById('q').addEventListener('input', () => {
   clearTimeout(debounceTimer);
+  if (!document.getElementById('q').value.trim()) { ultimoResultado = null; mostrarVacio(); return; }
   debounceTimer = setTimeout(buscar, 450);
 });
 document.getElementById('q').addEventListener('keydown', e => {
@@ -616,6 +641,7 @@ async function buscar() {
       .limit(150);
     if (error) throw error;
     ultimoResultado = { articulos: agrupar(data || []), q };
+    if ((data || []).length) guardarReciente(q);
     render(ultimoResultado.articulos, q);
   } catch (e) {
     cont.innerHTML = `<div class="empty">⚠️ Error: ${escHtml(e.message)}</div>`;
@@ -683,6 +709,7 @@ async function cargarImagenes(skus, descontinuados) {
     const { data } = await sb.from('stock_imagenes').select('sku, url').in('sku', skus);
     for (const r of (data || [])) {
       conFoto.add(r.sku);
+      imgUrls[r.sku] = r.url;
       const div = document.getElementById('img-' + cssId(r.sku));
       if (div) {
         div.innerHTML = `<img src="${r.url}" loading="lazy" alt="" onclick="window.open('${r.url}', '_blank')">`;
@@ -732,12 +759,138 @@ async function solicitarImagen(sku) {
   }
 }
 
+// ── Búsquedas recientes ──
+function guardarReciente(q) {
+  try {
+    let r = JSON.parse(localStorage.getItem('stock_recientes') || '[]');
+    r = [q, ...r.filter(x => x.toLowerCase() !== q.toLowerCase())].slice(0, 8);
+    localStorage.setItem('stock_recientes', JSON.stringify(r));
+  } catch (_) {}
+}
+function htmlRecientes() {
+  let r = [];
+  try { r = JSON.parse(localStorage.getItem('stock_recientes') || '[]'); } catch (_) {}
+  if (!r.length) return '';
+  return `<div style="margin-top:16px;font-size:12px;color:var(--muted);">Búsquedas recientes</div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin-top:8px;">
+      ${r.map(x => `<span class="chip-toggle" onclick="buscarReciente('${escAttr(x)}')">${escHtml(x)}</span>`).join('')}
+    </div>`;
+}
+function buscarReciente(q) {
+  document.getElementById('q').value = q;
+  buscar();
+}
+function mostrarVacio() {
+  document.getElementById('resultados').innerHTML =
+    `<div class="empty"><div class="big">📦</div>Buscá un artículo por SKU o descripción<br>para ver stock y precio en los 3 locales.${htmlRecientes()}</div>`;
+}
+mostrarVacio();
+
+// ── Compartir por WhatsApp ──
+const imgUrls = {};
+const WA_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="#25D366" style="vertical-align:-3px;"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413Z"/></svg>';
+function compartirWA(sku) {
+  const a = (ultimoResultado?.articulos || []).find(x => x.sku === sku);
+  if (!a) return;
+  let txt = `*${a.descripcion || sku}*`;
+  if (a.desc_adic) txt += `\n${a.desc_adic}`;
+  if (a.precio != null) txt += `\n💲 ${fmt$(a.precio)}`;
+  if (imgUrls[sku]) txt += `\n${imgUrls[sku]}`;
+  window.open('https://wa.me/?text=' + encodeURIComponent(txt), '_blank');
+}
+
+// ── Ver otros colores / variantes ──
+function verColores(sku) {
+  const a = (ultimoResultado?.articulos || []).find(x => x.sku === sku);
+  if (!a || !a.descripcion) return;
+  const palabras = a.descripcion.trim().split(/\s+/);
+  if (palabras.length < 2) { toast('Este artículo no tiene variantes por nombre.'); return; }
+  const base = palabras.slice(0, -1).join(' ').replace(/[%_]/g, '');
+  mostrarStockPorColor(base, base + '%');
+}
+
+// ── Lector de código de barras ──
+let scanStream = null, scanTimer = null;
+if (!('BarcodeDetector' in window)) {
+  document.getElementById('btn-scan').style.display = 'none';
+}
+async function abrirScanner() {
+  const bg = document.getElementById('scan-modal-bg');
+  const video = document.getElementById('scan-video');
+  try {
+    scanStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+  } catch (e) { toast('No pude acceder a la cámara: ' + (e.message || e)); return; }
+  video.srcObject = scanStream;
+  bg.style.display = 'flex';
+  let formatos = ['ean_13', 'ean_8', 'code_128', 'code_39', 'upc_a', 'upc_e', 'itf'];
+  try {
+    const sop = await BarcodeDetector.getSupportedFormats();
+    formatos = formatos.filter(f => sop.includes(f));
+  } catch (_) {}
+  const detector = new BarcodeDetector({ formats: formatos });
+  scanTimer = setInterval(async () => {
+    if (video.readyState < 2) return;
+    try {
+      const codes = await detector.detect(video);
+      if (codes.length) {
+        const valor = (codes[0].rawValue || '').trim();
+        if (!valor) return;
+        if (navigator.vibrate) navigator.vibrate(80);
+        cerrarScanner();
+        document.getElementById('q').value = valor;
+        buscar();
+      }
+    } catch (_) { /* frame malo, sigue */ }
+  }, 250);
+}
+function cerrarScanner() {
+  clearInterval(scanTimer); scanTimer = null;
+  if (scanStream) { scanStream.getTracks().forEach(t => t.stop()); scanStream = null; }
+  document.getElementById('scan-modal-bg').style.display = 'none';
+}
+
+// ── Pedido de traslado entre locales ──
+let trasladoActual = null;
+function abrirTraslado(sku, local) {
+  const a = (ultimoResultado?.articulos || []).find(x => x.sku === sku);
+  trasladoActual = { sku, local, desc: a?.descripcion || '' };
+  document.getElementById('tras-titulo').textContent = '🔁 Pedir a ' + LOCAL_LABEL[local];
+  document.getElementById('tras-desc').textContent = sku + (a?.descripcion ? ' · ' + a.descripcion : '');
+  document.getElementById('tras-cant').value = 1;
+  document.getElementById('tras-modal-bg').style.display = 'flex';
+}
+function cerrarTraslado() {
+  document.getElementById('tras-modal-bg').style.display = 'none';
+  trasladoActual = null;
+}
+async function enviarTraslado() {
+  if (!trasladoActual) return;
+  const { sku, local, desc } = trasladoActual;
+  const cant = parseInt(document.getElementById('tras-cant').value) || 1;
+  let quien = '';
+  try { quien = (await sb.auth.getUser()).data?.user?.email || ''; } catch (_) {}
+  const cuerpo = `Necesitan ${cant} × ${sku}${desc ? ' (' + desc + ')' : ''}${quien ? ' · pide ' + quien : ''}`;
+  cerrarTraslado();
+  try {
+    await sb.functions.invoke('enviar-push', {
+      body: { local, title: '🔁 Pedido de traslado', body: cuerpo, tag: 'tras-' + sku } });
+    if (local === 'oficina') {
+      // JP cumple el rol de encargado en Oficina
+      await sb.functions.invoke('enviar-push', {
+        body: { empleado_id: 3, title: '🔁 Pedido de traslado', body: cuerpo, tag: 'tras-' + sku } });
+    }
+    toast('📣 Pedido enviado a la encargada de ' + LOCAL_LABEL[local]);
+  } catch (e) {
+    toast('No pude enviar el pedido: ' + (e.message || e));
+  }
+}
+
 function cardHtml(a) {
   const chips = LOCALES.map(l => {
     const st = a.stocks[l];
     const tiene = st !== undefined;
     const cls = !tiene ? '' : (st > 0 ? 'ok' : 'cero');
-    return `<div class="stock-chip ${cls}" id="chip-${cssId(a.sku)}-${l}">
+    return `<div class="stock-chip ${cls}" id="chip-${cssId(a.sku)}-${l}" ${tiene && st > 0 ? `onclick="abrirTraslado('${escAttr(a.sku)}','${l}')" style="cursor:pointer;" title="Pedir traslado desde ${LOCAL_LABEL[l]}"` : ''}>
       <div class="loc">${LOCAL_LABEL[l]}</div>
       <div class="qty">${tiene ? fmtQty(st) : '—'}</div>
       <div class="live"></div>
@@ -757,7 +910,11 @@ function cardHtml(a) {
     <div class="stocks">${chips}</div>
     <div class="card-foot">
       <span class="frescura">${frescura(a.updated_at)}</span>
-      <button class="btn-live" id="live-${cssId(a.sku)}" onclick="verificarEnVivo('${escAttr(a.sku)}')" title="Verificar stock en vivo contra los servers">⚡</button>
+      <span style="display:flex;gap:6px;">
+        ${(a.descripcion || '').trim().split(/\s+/).length > 1 ? `<button class="btn-live" onclick="verColores('${escAttr(a.sku)}')" title="Ver otros colores / variantes">🎨</button>` : ''}
+        <button class="btn-live" onclick="compartirWA('${escAttr(a.sku)}')" title="Compartir por WhatsApp">${WA_SVG}</button>
+        <button class="btn-live" id="live-${cssId(a.sku)}" onclick="verificarEnVivo('${escAttr(a.sku)}')" title="Verificar stock en vivo contra los servers">⚡</button>
+      </span>
     </div>
   </div>`;
 }
