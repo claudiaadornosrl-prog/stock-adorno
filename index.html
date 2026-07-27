@@ -609,7 +609,7 @@ async function buscar() {
   const qSafe = q.replace(/[,()%\\]/g, ' ').trim();
   try {
     const { data, error } = await sb.from('stock_articulos')
-      .select('local, sku, descripcion, descripcion_adicional, proveedor, stock, precio, updated_at')
+      .select('local, sku, descripcion, descripcion_adicional, proveedor, stock, precio, updated_at, discontinuado')
       .or(`sku.ilike.%${qSafe}%,descripcion.ilike.%${qSafe}%,descripcion_adicional.ilike.%${qSafe}%`)
       .limit(150);
     if (error) throw error;
@@ -625,9 +625,10 @@ function agrupar(rows) {
   const map = {};
   for (const r of rows) {
     const a = map[r.sku] || (map[r.sku] = {
-      sku: r.sku, descripcion: null, desc_adic: null, proveedor: null, precio: null, updated_at: null, stocks: {},
+      sku: r.sku, descripcion: null, desc_adic: null, proveedor: null, precio: null, updated_at: null, stocks: {}, discontinuado: false,
     });
     a.stocks[r.local] = parseFloat(r.stock || 0);
+    if (r.discontinuado) a.discontinuado = true;
     if (r.descripcion && !a.descripcion) a.descripcion = r.descripcion;
     if (r.descripcion_adicional && !a.desc_adic) a.desc_adic = r.descripcion_adicional;
     if (r.proveedor && !a.proveedor) a.proveedor = r.proveedor;
@@ -670,10 +671,10 @@ function render(articulos, q) {
   const top = articulos.slice(0, 30);
   cont.innerHTML = top.map(cardHtml).join('') +
     (articulos.length > 30 ? `<div class="empty">…y ${articulos.length - 30} resultados más. Afiná la búsqueda.</div>` : '');
-  cargarImagenes(top.map(a => a.sku));
+  cargarImagenes(top.map(a => a.sku), new Set(top.filter(a => a.discontinuado).map(a => a.sku)));
 }
 
-async function cargarImagenes(skus) {
+async function cargarImagenes(skus, descontinuados) {
   if (!skus.length) return;
   let conFoto = new Set();
   try {
@@ -688,8 +689,9 @@ async function cargarImagenes(skus) {
     }
   } catch (_) { /* sin imágenes, no pasa nada */ }
   // Los que quedaron sin foto → cámara en el hueco de la imagen para pedirla
+  // (salvo discontinuados: no tiene sentido pedirles foto)
   for (const sku of skus) {
-    if (!conFoto.has(sku)) {
+    if (!conFoto.has(sku) && !(descontinuados && descontinuados.has(sku))) {
       const div = document.getElementById('img-' + cssId(sku));
       if (div) {
         div.innerHTML = '📷';
