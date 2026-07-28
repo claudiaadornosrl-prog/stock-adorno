@@ -418,10 +418,13 @@ const LISTAS_CATS = [
   { id: 'alfombras', label: '🧶 Alfombras',    cols: ['Medida', 'Material', '', 'Precio'] },
 ];
 let listaCat = 'espalma';
+let espVerSinStock = false;
 function renderListasChips() {
   document.getElementById('listas-chips').innerHTML = LISTAS_CATS.map(c =>
     `<span class="chip-toggle ${c.id === listaCat ? 'on' : ''}" onclick="setListaCat('${c.id}')">${c.label}</span>`
-  ).join('');
+  ).join('') + (esAdmin
+    ? `<span class="chip-toggle ${espVerSinStock ? 'on' : ''}" onclick="espVerSinStock=!espVerSinStock;renderListasChips();renderEspalma();" title="Mostrar también los modelos sin stock (para editarlos)">👁 sin stock</span>`
+    : '');
 }
 function setListaCat(id) {
   listaCat = id;
@@ -439,7 +442,7 @@ async function detectarAdmin() {
     esAdmin = data?.rol === 'admin';
   } catch (_) { esAdmin = false; }
   document.getElementById('btn-esp-add').style.display = esAdmin ? '' : 'none';
-  if (espCargado) renderEspalma();
+  if (espCargado) { renderListasChips(); renderEspalma(); }
 }
 
 async function cargarEspalma() {
@@ -503,8 +506,9 @@ function renderEspalma() {
   }
   const cat = LISTAS_CATS.find(c => c.id === listaCat) || LISTAS_CATS[0];
   // Modelos sin ningun color en stock: ocultos (admin los ve atenuados para poder editarlos)
+  // Sin stock: ocultos para todos; admin puede mostrarlos con el toggle 👁
   const visibles = espCache.filter(m => (m.categoria || 'espalma') === listaCat)
-    .filter(m => m.colores_stock !== 0 || esAdmin);
+    .filter(m => m.colores_stock !== 0 || (esAdmin && espVerSinStock));
   if (!visibles.length) {
     cont.innerHTML = '<div class="empty"><div class="big">🧺</div>No hay modelos con stock en esta lista.' +
       (esAdmin ? '<br>Usá el botón ＋ para agregar.' : '') + '</div>';
