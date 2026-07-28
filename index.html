@@ -211,7 +211,7 @@ body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Ro
 
 <div id="view-espalma" style="display:none;">
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;gap:10px;">
-    <div style="font-size:13px;color:var(--muted);">Sets Espalma · toalla y toallón: medidas, gramaje y precio</div>
+    <div id="listas-chips" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
     <button class="btn-live" id="btn-esp-add" style="display:none;" onclick="abrirEspalmaEdit(null)" title="Agregar modelo">＋</button>
   </div>
   <div id="esp-contenido"><div class="empty"><span class="spinner"></span></div></div>
@@ -410,7 +410,26 @@ function verTab(t) {
   if (t === 'espalma' && !espCargado) { espCargado = true; cargarEspalma(); }
 }
 
-// ═══ Espalma ═══
+// ═══ Listas (Espalma / Ropa de cama / Alf. baño / Alfombras) ═══
+const LISTAS_CATS = [
+  { id: 'espalma',   label: '🛁 Espalma',      cols: ['Toalla', 'Toallón', 'Gramaje', 'Precio set'] },
+  { id: 'ropa_cama', label: '🛏 Ropa de cama', cols: ['Tipo', 'Medidas', 'Detalle', 'Precio'] },
+  { id: 'alf_bano',  label: '🚿 Alf. baño',    cols: ['Tipo', 'Medida', 'Material', 'Precio'] },
+  { id: 'alfombras', label: '🧶 Alfombras',    cols: ['Medida', 'Material', '', 'Precio'] },
+];
+let listaCat = 'espalma';
+function renderListasChips() {
+  document.getElementById('listas-chips').innerHTML = LISTAS_CATS.map(c =>
+    `<span class="chip-toggle ${c.id === listaCat ? 'on' : ''}" onclick="setListaCat('${c.id}')">${c.label}</span>`
+  ).join('');
+}
+function setListaCat(id) {
+  listaCat = id;
+  renderListasChips();
+  renderEspalma();
+  actualizarPreciosEspalma();
+}
+
 let esAdmin = false;
 let espCache = [];
 
@@ -424,6 +443,7 @@ async function detectarAdmin() {
 }
 
 async function cargarEspalma() {
+  renderListasChips();
   const cont = document.getElementById('esp-contenido');
   cont.innerHTML = '<div class="empty"><span class="spinner"></span></div>';
   try {
@@ -439,9 +459,13 @@ async function cargarEspalma() {
 }
 
 async function actualizarPreciosEspalma() {
-  // Toma el precio real y actual de los articulos que matchean el patron
-  const conPatron = espCache.filter(m => m.patron);
+  // Toma el precio real y actual de los articulos que matchean el patron.
+  // Solo la categoria visible (79 filas totales = mucha consulta al pedo)
+  // y solo las que no se consultaron todavia en esta sesion.
+  const conPatron = espCache.filter(m => m.patron
+    && (m.categoria || 'espalma') === listaCat && !m._precios_ok);
   if (!conPatron.length) return;
+  conPatron.forEach(m => { m._precios_ok = true; });
   try {
     const resultados = await Promise.all(conPatron.map(m =>
       sb.from('stock_articulos').select('sku, local, stock, precio')
@@ -472,13 +496,20 @@ async function actualizarPreciosEspalma() {
 
 function renderEspalma() {
   const cont = document.getElementById('esp-contenido');
-  if (!espCache.length) {
-    cont.innerHTML = '<div class="empty"><div class="big">🧺</div>Todavía no hay modelos cargados.' +
+  if (false) {
+    cont.innerHTML = '<div class="empty"><div class="big">🧺</div>No hay modelos en esta lista.' +
       (esAdmin ? '<br>Usá el botón ＋ para agregar el primero.' : '') + '</div>';
     return;
   }
+  const cat = LISTAS_CATS.find(c => c.id === listaCat) || LISTAS_CATS[0];
   // Modelos sin ningun color en stock: ocultos (admin los ve atenuados para poder editarlos)
-  const visibles = espCache.filter(m => m.colores_stock !== 0 || esAdmin);
+  const visibles = espCache.filter(m => (m.categoria || 'espalma') === listaCat)
+    .filter(m => m.colores_stock !== 0 || esAdmin);
+  if (!visibles.length) {
+    cont.innerHTML = '<div class="empty"><div class="big">🧺</div>No hay modelos con stock en esta lista.' +
+      (esAdmin ? '<br>Usá el botón ＋ para agregar.' : '') + '</div>';
+    return;
+  }
   const filas = visibles.map(m => `
     <tr class="${m.patron ? 'esp-fila-click' : ''}" ${m.colores_stock === 0 ? 'style="opacity:0.45;"' : ''} ${m.patron ? `onclick="abrirEspalmaStock(${m.id})" title="Ver stock por color"` : ''}>
       <td><span class="esp-modelo">${escHtml(m.modelo)}</span>
@@ -492,7 +523,7 @@ function renderEspalma() {
     </tr>`).join('');
   cont.innerHTML = `<div class="esp-wrap"><table class="esp-tabla">
     <thead><tr>
-      <th>Modelo</th><th>Toalla</th><th>Toallón</th><th>Gramaje</th><th>Precio set</th>${esAdmin ? '<th></th>' : ''}
+      <th>Modelo</th><th>${cat.cols[0]}</th><th>${cat.cols[1]}</th><th>${cat.cols[2]}</th><th>${cat.cols[3]}</th>${esAdmin ? '<th></th>' : ''}
     </tr></thead>
     <tbody>${filas}</tbody>
   </table></div>`;
@@ -581,6 +612,7 @@ async function guardarEspalma() {
   if (!modelo) { errEl.textContent = 'Poné el nombre del modelo.'; return; }
   const fila = {
     modelo,
+    categoria: (espEditId ? (espCache.find(x => x.id === espEditId)?.categoria) : listaCat) || 'espalma',
     toalla: document.getElementById('esp-toalla').value.trim() || null,
     toallon: document.getElementById('esp-toallon').value.trim() || null,
     gramaje: document.getElementById('esp-gramaje').value.trim() || null,
