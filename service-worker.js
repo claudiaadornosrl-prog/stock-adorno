@@ -1,5 +1,5 @@
 // Service Worker — Stock Adorno
-const CACHE_VERSION = 'stock-adorno-v37-drag-reordenar';
+const CACHE_VERSION = 'stock-adorno-v38-notificaciones';
 const CACHE_ASSETS = ['./', './index.html', './manifest.webmanifest', './favicon.svg'];
 
 self.addEventListener('install', e => {
@@ -29,4 +29,29 @@ self.addEventListener('fetch', e => {
       return r;
     }).catch(() => caches.match(req))
   );
+});
+
+// ── Web Push (notificaciones de traslados y pedidos de foto) ──
+self.addEventListener('push', e => {
+  let d = {};
+  try { d = e.data ? e.data.json() : {}; } catch (_) { d = { title: 'Stock', body: e.data ? e.data.text() : '' }; }
+  e.waitUntil(self.registration.showNotification(d.title || 'Stock · Claudia Adorno', {
+    body: d.body || '',
+    icon: d.icon || './favicon.svg',
+    badge: './favicon.svg',
+    tag: d.tag || 'stock-default',
+    renotify: true,
+    data: { url: d.url || './' },
+  }));
+});
+
+self.addEventListener('notificationclick', e => {
+  e.notification.close();
+  const url = (e.notification.data && e.notification.data.url) || './';
+  e.waitUntil(clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
+    for (const c of list) {
+      if (c.url.includes('stock-adorno') && 'focus' in c) { c.navigate(url); return c.focus(); }
+    }
+    return clients.openWindow(url);
+  }));
 });

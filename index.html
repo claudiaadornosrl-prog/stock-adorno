@@ -214,6 +214,7 @@ tr.drag-over { border-top: 3px solid var(--primary); }
       <button id="kebab-btn" onclick="toggleKebab(event)" title="Menú" aria-label="Menú">⋮</button>
       <div class="kebab-menu" id="kebab-menu">
         <button id="btn-install" style="display:none;">⬇ Instalar la app</button>
+        <button id="mi-notifs" onclick="toggleNotifs()">🔕 Activar notificaciones</button>
         <button id="mi-exacto" onclick="toggleExacto()">🎯 Solo resultado exacto</button>
         <button id="mi-constock" onclick="toggleSinStock()">🚫 Ocultar sin stock</button>
         <button onclick="doLogout()">👋 Cerrar sesión</button>
@@ -360,6 +361,7 @@ function mostrarApp() {
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('app').style.display = '';
   detectarAdmin();
+  actualizarBtnNotifs();
   chequearTrasladoURL();
   setTimeout(() => document.getElementById('q').focus(), 100);
 }
@@ -1067,6 +1069,90 @@ async function solicitarImagen(sku) {
   } catch (e) {
     toast('No pude enviar la solicitud: ' + (e.message || e));
     if (btn) { btn.innerHTML = '📷'; btn.onclick = () => solicitarImagen(sku); }
+  }
+}
+
+// ── Notificaciones push (traslados, pedidos de foto) ──
+const VAPID_PUBLIC_KEY = 'BJr3r3C_T-euS9kqRZX561MoMjHtMl2wpMfS8oUA17xv1TdlA6E3S_5VKyQO2kqlqngPHrQSGr-PpJutXdgKsKc';
+
+function urlB64ToUint8(b64) {
+  const pad = '='.repeat((4 - (b64.length % 4)) % 4);
+  const raw = atob((b64 + pad).replace(/-/g, '+').replace(/_/g, '/'));
+  const out = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+  return out;
+}
+
+function notifsSoportadas() {
+  return 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+}
+
+async function actualizarBtnNotifs() {
+  const btn = document.getElementById('mi-notifs');
+  if (!btn) return;
+  if (!notifsSoportadas()) { btn.style.display = 'none'; return; }
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    if (sub) { btn.textContent = '🔔 Notificaciones activadas'; btn.classList.add('on'); }
+    else     { btn.textContent = '🔕 Activar notificaciones';  btn.classList.remove('on'); }
+  } catch (_) {}
+}
+
+async function toggleNotifs() {
+  if (!notifsSoportadas()) { toast('Este dispositivo no soporta notificaciones.'); return; }
+  const reg = await navigator.serviceWorker.ready;
+  const actual = await reg.pushManager.getSubscription();
+
+  // Ya activadas → desactivar
+  if (actual) {
+    try { await sb.from('rrhh_push_subscriptions').delete().eq('endpoint', actual.endpoint); } catch (_) {}
+    await actual.unsubscribe();
+    toast('🔕 Notificaciones desactivadas');
+    actualizarBtnNotifs();
+    return;
+  }
+
+  try {
+    const perm = await Notification.requestPermission();
+    if (perm !== 'granted') {
+      toast('Permiso denegado. En iPhone hay que instalar la app en la pantalla de inicio primero.');
+      return;
+    }
+    const sub = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlB64ToUint8(VAPID_PUBLIC_KEY),
+    });
+    const raw = sub.toJSON();
+    // Quién es: empleada con legajo, o usuario genérico del local (alcorta@/unicenter@)
+    let empleadoId = null, localGen = null;
+    try {
+      const { data: u } = await sb.rpc('rrhh_current_user');
+      empleadoId = u?.empleado_id ?? null;
+      if (!empleadoId) localGen = u?.local_gerencia ?? null;
+    } catch (_) {}
+    if (!empleadoId && !localGen) {
+      await sub.unsubscribe();
+      toast('No pude identificar tu usuario para las notificaciones.');
+      return;
+    }
+    const { error } = await sb.from('rrhh_push_subscriptions').upsert({
+      empleado_id: empleadoId,
+      local_generico: localGen,
+      endpoint: raw.endpoint,
+      p256dh: raw.keys.p256dh,
+      auth: raw.keys.auth,
+      user_agent: (navigator.userAgent || '').slice(0, 200),
+      plataforma: /iPhone|iPad/.test(navigator.userAgent) ? 'ios'
+                : /Android/.test(navigator.userAgent) ? 'android' : 'web',
+      activa: true,
+      last_seen_at: new Date().toISOString(),
+    }, { onConflict: 'endpoint' });
+    if (error) throw error;
+    toast('🔔 Listo — vas a recibir los pedidos de traslado');
+    actualizarBtnNotifs();
+  } catch (e) {
+    toast('No pude activar: ' + (e.message || e));
   }
 }
 
