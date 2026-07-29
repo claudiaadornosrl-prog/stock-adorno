@@ -33,6 +33,16 @@ body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Ro
 .htab { border: none; background: none; color: white; font-size: 16px; padding: 7px 13px;
   border-radius: 8px; cursor: pointer; display: flex; align-items: center; }
 .htab.active { background: white; color: var(--primary); }
+.listas-wrap { position: relative; }
+.listas-menu { display: none; position: absolute; right: 0; top: calc(100% + 8px); background: white;
+  border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.2); min-width: 210px; padding: 6px;
+  z-index: 70; }
+.listas-menu.open { display: block; }
+.listas-menu button { display: block; width: 100%; text-align: left; background: white; border: none;
+  border-radius: 8px; padding: 11px 12px; font-size: 14px; cursor: pointer; color: var(--text); }
+.listas-menu button:hover { background: #f3f4f6; }
+.listas-menu button.on { background: #e8f0fe; color: var(--primary); font-weight: 700; }
+.listas-menu .sep { height: 1px; background: var(--border); margin: 5px 0; }
 
 .search-wrap { padding: 12px 16px; background: white; border-bottom: 1px solid var(--border);
   position: sticky; top: 58px; z-index: 40; }
@@ -181,7 +191,10 @@ body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Ro
   <span class="title">Stock <span class="sub">Claudia Adorno</span></span>
   <div class="htabs">
     <button class="htab active" id="tab-stock" onclick="verTab('stock')" title="Buscador de stock" aria-label="Stock">🔍</button>
-    <button class="htab" id="tab-espalma" onclick="verTab('espalma')" title="Espalma · toallas" aria-label="Espalma"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" style="display:block;"><rect x="6.5" y="4.5" width="11" height="5.5" rx="2.75"/><rect x="3.5" y="12" width="17" height="6.5" rx="3.25"/></svg></button>
+    <div class="listas-wrap">
+      <button class="htab" id="tab-espalma" onclick="toggleListasMenu(event)" title="Listas de productos" aria-label="Listas">☰</button>
+      <div class="listas-menu" id="listas-menu"></div>
+    </div>
   </div>
 </div>
 
@@ -211,7 +224,7 @@ body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Ro
 
 <div id="view-espalma" style="display:none;">
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;gap:10px;">
-    <div id="listas-chips" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
+    <div id="listas-titulo" style="font-size:16px;font-weight:700;color:var(--text);"></div>
     <button class="btn-live" id="btn-esp-add" style="display:none;" onclick="abrirEspalmaEdit(null)" title="Agregar modelo">＋</button>
   </div>
   <div id="esp-contenido"><div class="empty"><span class="spinner"></span></div></div>
@@ -408,6 +421,7 @@ function verTab(t) {
   document.getElementById('view-espalma').style.display = t === 'espalma' ? '' : 'none';
   document.getElementById('tab-stock').classList.toggle('active', t === 'stock');
   document.getElementById('tab-espalma').classList.toggle('active', t === 'espalma');
+  if (t === 'espalma') renderListasChips();
   if (t === 'espalma' && !espCargado) { espCargado = true; cargarEspalma(); }
 }
 
@@ -421,15 +435,32 @@ const LISTAS_CATS = [
 ];
 let listaCat = 'espalma';
 let espVerSinStock = false;
+function toggleListasMenu(ev) {
+  ev.stopPropagation();
+  const m = document.getElementById('listas-menu');
+  m.classList.toggle('open');
+  if (m.classList.contains('open')) renderListasChips();
+}
+document.addEventListener('click', () => {
+  document.getElementById('listas-menu')?.classList.remove('open');
+});
+
 function renderListasChips() {
-  document.getElementById('listas-chips').innerHTML = LISTAS_CATS.map(c =>
-    `<span class="chip-toggle ${c.id === listaCat ? 'on' : ''}" onclick="setListaCat('${c.id}')">${c.label}</span>`
-  ).join('') + (esAdmin
-    ? `<span class="chip-toggle ${espVerSinStock ? 'on' : ''}" onclick="espVerSinStock=!espVerSinStock;renderListasChips();renderEspalma();" title="Mostrar también los modelos sin stock (para editarlos)">👁 sin stock</span>`
-    : '');
+  const menu = document.getElementById('listas-menu');
+  if (menu) {
+    menu.innerHTML = LISTAS_CATS.map(c =>
+      `<button class="${c.id === listaCat && espCargado ? 'on' : ''}" onclick="setListaCat('${c.id}')">${c.label}</button>`
+    ).join('') + (esAdmin
+      ? `<div class="sep"></div><button class="${espVerSinStock ? 'on' : ''}" onclick="event.stopPropagation();espVerSinStock=!espVerSinStock;renderListasChips();renderEspalma();">👁 Ver también sin stock</button>`
+      : '');
+  }
+  const tit = document.getElementById('listas-titulo');
+  if (tit) tit.textContent = (LISTAS_CATS.find(c => c.id === listaCat) || {}).label || '';
 }
 function setListaCat(id) {
   listaCat = id;
+  document.getElementById('listas-menu')?.classList.remove('open');
+  verTab('espalma');
   renderListasChips();
   renderEspalma();
   actualizarPreciosEspalma();
