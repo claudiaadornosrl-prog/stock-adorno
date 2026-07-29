@@ -225,7 +225,11 @@ body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Ro
 <div id="view-espalma" style="display:none;">
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;gap:10px;">
     <div id="listas-titulo" style="font-size:16px;font-weight:700;color:var(--text);"></div>
-    <button class="btn-live" id="btn-esp-add" style="display:none;" onclick="abrirEspalmaEdit(null)" title="Agregar modelo">＋</button>
+    <span style="display:flex;gap:6px;align-items:center;">
+      <button class="btn-live" id="btn-sugerencias" style="display:none;border-color:#f59e0b;color:#b45309;background:#fffbeb;"
+              onclick="abrirSugerencias()" title="Modelos nuevos detectados sin lista"></button>
+      <button class="btn-live" id="btn-esp-add" style="display:none;" onclick="abrirEspalmaEdit(null)" title="Agregar modelo">＋</button>
+    </span>
   </div>
   <div id="esp-contenido"><div class="empty"><span class="spinner"></span></div></div>
 </div>
@@ -264,6 +268,19 @@ body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Ro
       <button class="btn-login" style="flex:1; background:#dc2626;" onclick="responderTraslado(false)">❌ No está</button>
     </div>
     <button style="width:100%; margin-top:8px; background:white; border:1px solid var(--border); border-radius:8px; padding:10px; cursor:pointer;" onclick="document.getElementById('trasresp-modal-bg').style.display='none'">Después</button>
+  </div>
+</div>
+
+<div id="sug-modal-bg" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:88; align-items:center; justify-content:center; padding:16px;">
+  <div style="background:white; border-radius:14px; padding:18px; width:100%; max-width:640px; max-height:88vh; overflow-y:auto;">
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <h3 style="margin:0;font-size:17px;">🆕 Modelos nuevos sin lista</h3>
+      <button style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--muted);" onclick="document.getElementById('sug-modal-bg').style.display='none'">×</button>
+    </div>
+    <div style="font-size:12px;color:var(--muted);margin:6px 0 12px;">
+      Artículos con stock que todavía no están en ninguna lista. Revisá y tocá Crear.
+    </div>
+    <div id="sug-contenido"><div class="empty"><span class="spinner"></span></div></div>
   </div>
 </div>
 
@@ -487,6 +504,7 @@ async function cargarEspalma() {
     espCache = data || [];
     renderEspalma();
     actualizarPreciosEspalma();
+    chequearSugerencias();
   } catch (e) {
     cont.innerHTML = `<div class="empty">⚠️ Error: ${escHtml(e.message)}</div>`;
   }
@@ -582,6 +600,75 @@ function renderEspalma() {
     </tr></thead>
     <tbody>${filas}</tbody>
   </table></div>`;
+}
+
+// ── Detector de modelos nuevos sin lista (solo admin) ──
+let sugCache = [];
+async function chequearSugerencias() {
+  if (!esAdmin) return;
+  try {
+    const { data, error } = await sb.rpc('stock_modelos_sin_lista');
+    if (error) throw error;
+    sugCache = data || [];
+    const btn = document.getElementById('btn-sugerencias');
+    if (sugCache.length) {
+      btn.textContent = `🆕 ${sugCache.length}`;
+      btn.title = `${sugCache.length} modelo(s) con stock que no están en ninguna lista`;
+      btn.style.display = '';
+    } else {
+      btn.style.display = 'none';
+    }
+  } catch (_) { /* silencioso */ }
+}
+
+const CAT_LABEL = { espalma: '🧴 Toallas', ropa_cama: '🛏 Ropa de cama',
+  alf_bano: '🚿 Alf. baño', alfombras: '🧶 Alfombras', pantallas: '💡 Pantallas' };
+
+function abrirSugerencias() {
+  const cont = document.getElementById('sug-contenido');
+  document.getElementById('sug-modal-bg').style.display = 'flex';
+  if (!sugCache.length) {
+    cont.innerHTML = '<div class="empty">✅ No hay modelos nuevos pendientes.</div>';
+    return;
+  }
+  cont.innerHTML = sugCache.map((g, i) => `
+    <div style="border:1px solid var(--border);border-radius:10px;padding:11px;margin-bottom:9px;" id="sug-card-${i}">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">
+        <div style="flex:1;min-width:0;">
+          <div style="font-weight:700;font-size:15px;">${escHtml(g.modelo_sugerido)}
+            <span style="font-weight:400;font-size:12px;color:var(--muted);">· ${CAT_LABEL[g.categoria] || g.categoria}</span>
+          </div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px;">${escHtml(g.ejemplo || '')}</div>
+          <div style="font-size:12px;margin-top:4px;">
+            ${g.medidas ? `📏 ${escHtml(g.medidas)} · ` : ''}${g.gramaje ? `⚖ ${escHtml(g.gramaje)} grs · ` : ''}${g.precio ? `💲${(+g.precio).toLocaleString('es-AR')} · ` : ''}${g.colores} color${g.colores > 1 ? 'es' : ''} · stock ${Math.round(g.stock_total)}
+          </div>
+        </div>
+        <button class="btn-live" onclick="crearDesdeSugerencia(${i})" style="white-space:nowrap;">＋ Crear</button>
+      </div>
+    </div>`).join('');
+}
+
+async function crearDesdeSugerencia(i) {
+  const g = sugCache[i];
+  if (!g) return;
+  const card = document.getElementById('sug-card-' + i);
+  try {
+    const { error } = await sb.from('espalma_modelos').insert({
+      categoria: g.categoria,
+      modelo: g.modelo_sugerido,
+      toalla: g.medidas || null,
+      gramaje: g.gramaje ? g.gramaje + ' grs' : null,
+      precio: g.precio || null,
+      patron: g.patron_sugerido,
+      orden: 900,
+      updated_at: new Date().toISOString(),
+    });
+    if (error) throw error;
+    if (card) card.style.display = 'none';
+    sugCache = sugCache.filter((_, idx) => idx !== i);
+    toast('✓ Creado — revisalo con el ✏️ para completar los datos');
+    cargarEspalma();
+  } catch (e) { toast('No pude crear: ' + (e.message || e)); }
 }
 
 function abrirEspalmaStock(id) {
