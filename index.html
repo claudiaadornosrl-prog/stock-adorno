@@ -129,6 +129,11 @@ body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Ro
 .esp-tabla td { padding: 10px 9px; border-top: 1px solid var(--border); vertical-align: top; }
 .esp-tabla tr:nth-child(even) td { background: #f9fafb; }
 .esp-modelo { font-weight: 700; }
+.drag-h { cursor: grab; color: #cbd5e1; font-size: 17px; padding: 0 2px; touch-action: none;
+  user-select: none; -webkit-user-select: none; }
+.drag-h:active { cursor: grabbing; }
+tr.dragging { opacity: 0.45; background: #e8f0fe !important; }
+tr.drag-over { border-top: 3px solid var(--primary); }
 .esp-nota { font-size: 11px; color: var(--muted); }
 .esp-precio { font-weight: 800; color: var(--primary); white-space: nowrap; }
 .btn-edit-row { background: none; border: 1px solid var(--border); border-radius: 6px;
@@ -590,6 +595,7 @@ function renderEspalma() {
   // Sin stock: ocultos para todos; admin puede mostrarlos con el toggle 👁
   let visibles = espCache.filter(m => (m.categoria || 'espalma') === listaCat)
     .filter(m => m.colores_stock !== 0);
+  visibles = visibles.slice().sort((a, b) => (a.orden || 0) - (b.orden || 0));
   if (cat.numero) {
     // Numeradas primero (orden del local), después las que no tienen número
     visibles = visibles.slice().sort((a, b) => {
@@ -606,7 +612,8 @@ function renderEspalma() {
     return;
   }
   const filas = visibles.map(m => `
-    <tr class="${m.patron ? 'esp-fila-click' : ''}" ${m.colores_stock === 0 ? 'style="opacity:0.45;"' : ''} ${m.patron ? `onclick="abrirEspalmaStock(${m.id})" title="Ver stock por color"` : ''}>
+    <tr class="${m.patron ? 'esp-fila-click' : ''}" data-id="${m.id}" ${m.colores_stock === 0 ? 'style="opacity:0.45;"' : ''} ${m.patron ? `onclick="abrirEspalmaStock(${m.id})" title="Ver stock por color"` : ''}>
+      <td class="drag-h" onclick="event.stopPropagation();" title="Arrastrar para reordenar">⠿</td>
       ${cat.numero ? `<td style="text-align:center;font-weight:700;color:var(--primary);">${m.numero_local ? escHtml(m.numero_local) : '·'}</td>` : ''}
       <td><span class="esp-modelo">${escHtml(m.modelo)}</span>
           ${m.nota ? `<div class="esp-nota">${escHtml(m.nota)}</div>` : ''}
@@ -620,10 +627,11 @@ function renderEspalma() {
     </tr>`).join('');
   cont.innerHTML = `<div class="esp-wrap"><table class="esp-tabla">
     <thead><tr>
-      ${cat.numero ? '<th style="text-align:center;">N°</th>' : ''}<th>Modelo</th><th>SKU</th><th>${cat.cols[0]}</th><th>${cat.cols[1]}</th><th>${cat.cols[2]}</th><th>${cat.cols[3]}</th>${esAdmin ? '<th></th>' : ''}
+      <th style="width:26px;"></th>${cat.numero ? '<th style="text-align:center;">N°</th>' : ''}<th>Modelo</th><th>SKU</th><th>${cat.cols[0]}</th><th>${cat.cols[1]}</th><th>${cat.cols[2]}</th><th>${cat.cols[3]}</th>${esAdmin ? '<th></th>' : ''}
     </tr></thead>
     <tbody>${filas}</tbody>
   </table></div>`;
+  initDragListas();
 }
 
 // ── Detector de modelos nuevos sin lista (solo admin) ──
@@ -723,6 +731,60 @@ async function crearDesdeSugerencia(i) {
     toast('✓ Creado — revisalo con el ✏️ para completar los datos');
     cargarEspalma();
   } catch (e) { toast('No pude crear: ' + (e.message || e)); }
+}
+
+// ── Reordenar filas arrastrando (funciona con mouse y con el dedo) ──
+let dragRow = null, dragTbody = null;
+
+function initDragListas() {
+  const tbody = document.querySelector('#esp-contenido tbody');
+  if (!tbody) return;
+  dragTbody = tbody;
+  tbody.querySelectorAll('.drag-h').forEach(h => {
+    h.addEventListener('pointerdown', ev => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      dragRow = h.closest('tr');
+      dragRow.classList.add('dragging');
+      h.setPointerCapture(ev.pointerId);
+    });
+    h.addEventListener('pointermove', ev => {
+      if (!dragRow) return;
+      ev.preventDefault();
+      const y = ev.clientY;
+      const filas = [...dragTbody.querySelectorAll('tr')];
+      for (const f of filas) {
+        if (f === dragRow) continue;
+        const r = f.getBoundingClientRect();
+        if (y > r.top && y < r.bottom) {
+          const medio = r.top + r.height / 2;
+          if (y < medio) dragTbody.insertBefore(dragRow, f);
+          else dragTbody.insertBefore(dragRow, f.nextSibling);
+          break;
+        }
+      }
+    });
+    const soltar = async ev => {
+      if (!dragRow) return;
+      dragRow.classList.remove('dragging');
+      dragRow = null;
+      const ids = [...dragTbody.querySelectorAll('tr')]
+        .map(tr => parseInt(tr.dataset.id)).filter(Boolean);
+      if (!ids.length) return;
+      try {
+        const { error } = await sb.rpc('espalma_reordenar', { p_ids: ids });
+        if (error) throw error;
+        // Reflejar el orden nuevo en la cache local
+        ids.forEach((id, i) => {
+          const m = espCache.find(x => x.id === id);
+          if (m) m.orden = i + 1;
+        });
+        toast('✓ Orden guardado');
+      } catch (e) { toast('No pude guardar el orden: ' + (e.message || e)); }
+    };
+    h.addEventListener('pointerup', soltar);
+    h.addEventListener('pointercancel', soltar);
+  });
 }
 
 function abrirEspalmaStock(id) {
