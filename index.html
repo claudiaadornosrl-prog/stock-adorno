@@ -297,6 +297,14 @@ body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Ro
 <div id="esp-modal-bg">
   <div class="esp-modal">
     <h3 id="esp-modal-titulo" style="margin:0;font-size:17px;">Modelo</h3>
+    <label>Lista</label>
+    <select id="esp-categoria" style="width:100%;padding:11px;font-size:15px;border:2px solid var(--border);border-radius:10px;background:white;">
+      <option value="espalma">🧴 Toallas</option>
+      <option value="ropa_cama">🛏 Ropa de cama</option>
+      <option value="alf_bano">🚿 Alf. baño</option>
+      <option value="alfombras">🧶 Alfombras</option>
+      <option value="pantallas">💡 Pantallas</option>
+    </select>
     <label>Modelo</label><input id="esp-modelo" placeholder="Ej: Egipcio">
     <label>Medida toalla</label><input id="esp-toalla" placeholder="Ej: 50 x 90">
     <label>Medida toallón</label><input id="esp-toallon" placeholder="Ej: 80 x 150">
@@ -548,8 +556,23 @@ async function actualizarPreciosEspalma() {
       // Colores (SKUs) con stock en algun local
       const porSku = {};
       for (const f of filas) porSku[f.sku] = (porSku[f.sku] || 0) + parseFloat(f.stock || 0);
-      const n = Object.values(porSku).filter(t => t > 0).length;
+      const conStock = Object.keys(porSku).filter(k => porSku[k] > 0);
+      const n = conStock.length;
       if (m.colores_stock !== n) { m.colores_stock = n; cambio = true; }
+      // Prefijo común de los SKUs (ej: EGIBL, EGIAR, EGINE → "EGI")
+      // Sirve para que las chicas lo tipeen en Dragonfish.
+      let pref = '';
+      if (conStock.length) {
+        pref = conStock[0];
+        for (const sk of conStock.slice(1)) {
+          let i = 0;
+          while (i < pref.length && i < sk.length && pref[i] === sk[i]) i++;
+          pref = pref.slice(0, i);
+          if (!pref) break;
+        }
+        if (conStock.length === 1) pref = conStock[0];   // único color: SKU entero
+      }
+      if (m.sku_prefijo !== pref) { m.sku_prefijo = pref; cambio = true; }
     });
     if (cambio) renderEspalma();
   } catch (_) { /* si falla, quedan los precios guardados */ }
@@ -588,6 +611,7 @@ function renderEspalma() {
       <td><span class="esp-modelo">${escHtml(m.modelo)}</span>
           ${m.nota ? `<div class="esp-nota">${escHtml(m.nota)}</div>` : ''}
           ${m.colores_stock != null ? `<div class="esp-nota">${m.colores_stock === 1 ? '1 color' : m.colores_stock + ' colores'} en stock</div>` : ''}</td>
+      <td><span class="sku-chip" style="font-family:ui-monospace,monospace;">${m.sku_prefijo ? escHtml(m.sku_prefijo) : '—'}</span></td>
       <td>${escHtml(m.toalla || '—')}</td>
       <td>${escHtml(m.toallon || '—')}</td>
       <td>${escHtml(m.gramaje || '—')}</td>
@@ -596,7 +620,7 @@ function renderEspalma() {
     </tr>`).join('');
   cont.innerHTML = `<div class="esp-wrap"><table class="esp-tabla">
     <thead><tr>
-      ${cat.numero ? '<th style="text-align:center;">N°</th>' : ''}<th>Modelo</th><th>${cat.cols[0]}</th><th>${cat.cols[1]}</th><th>${cat.cols[2]}</th><th>${cat.cols[3]}</th>${esAdmin ? '<th></th>' : ''}
+      ${cat.numero ? '<th style="text-align:center;">N°</th>' : ''}<th>Modelo</th><th>SKU</th><th>${cat.cols[0]}</th><th>${cat.cols[1]}</th><th>${cat.cols[2]}</th><th>${cat.cols[3]}</th>${esAdmin ? '<th></th>' : ''}
     </tr></thead>
     <tbody>${filas}</tbody>
   </table></div>`;
@@ -771,6 +795,7 @@ function abrirEspalmaEdit(id) {
   document.getElementById('esp-orden').value = m?.orden ?? (espCache.length + 1);
   document.getElementById('esp-patron').value = m?.patron || '';
   document.getElementById('esp-numero').value = m?.numero_local || '';
+  document.getElementById('esp-categoria').value = m?.categoria || listaCat;
   document.getElementById('esp-error').textContent = '';
   document.getElementById('esp-borrar').style.display = m ? '' : 'none';
   document.getElementById('esp-modal-bg').classList.add('open');
@@ -785,7 +810,7 @@ async function guardarEspalma() {
   if (!modelo) { errEl.textContent = 'Poné el nombre del modelo.'; return; }
   const fila = {
     modelo,
-    categoria: (espEditId ? (espCache.find(x => x.id === espEditId)?.categoria) : listaCat) || 'espalma',
+    categoria: document.getElementById('esp-categoria').value || listaCat,
     toalla: document.getElementById('esp-toalla').value.trim() || null,
     toallon: document.getElementById('esp-toallon').value.trim() || null,
     gramaje: document.getElementById('esp-gramaje').value.trim() || null,
