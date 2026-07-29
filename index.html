@@ -643,9 +643,36 @@ function abrirSugerencias() {
             ${g.medidas ? `📏 ${escHtml(g.medidas)} · ` : ''}${g.gramaje ? `⚖ ${escHtml(g.gramaje)} grs · ` : ''}${g.precio ? `💲${(+g.precio).toLocaleString('es-AR')} · ` : ''}${g.colores} color${g.colores > 1 ? 'es' : ''} · stock ${Math.round(g.stock_total)}
           </div>
         </div>
-        <button class="btn-live" onclick="crearDesdeSugerencia(${i})" style="white-space:nowrap;">＋ Crear</button>
+        <span style="display:flex;flex-direction:column;gap:5px;">
+          <button class="btn-live" onclick="crearDesdeSugerencia(${i})" style="white-space:nowrap;">＋ Crear</button>
+          <button class="btn-live" onclick="ignorarSugerencia(${i})" style="white-space:nowrap;border-color:#e5e7eb;color:var(--muted);" title="No mostrar más este artículo">✕ No va</button>
+        </span>
       </div>
     </div>`).join('');
+}
+
+async function ignorarSugerencia(i) {
+  const g = sugCache[i];
+  if (!g) return;
+  if (!confirm(`¿Descartar "${g.modelo_sugerido}"?\n\nNo va a aparecer más en la lista de sugerencias.\n(Se sigue viendo normal en el buscador 🔍)`)) return;
+  const card = document.getElementById('sug-card-' + i);
+  let quien = '';
+  try { quien = (await sb.auth.getUser()).data?.user?.email || ''; } catch (_) {}
+  try {
+    const { error } = await sb.from('stock_modelos_ignorados').insert({
+      patron: g.patron_sugerido,
+      modelo: g.modelo_sugerido,
+      categoria: g.categoria,
+      ignorado_por: quien,
+    });
+    if (error) throw error;
+    if (card) card.style.display = 'none';
+    sugCache = sugCache.filter((_, idx) => idx !== i);
+    const btn = document.getElementById('btn-sugerencias');
+    if (sugCache.length) btn.textContent = `🆕 ${sugCache.length}`;
+    else btn.style.display = 'none';
+    toast('Descartado — no vuelve a aparecer');
+  } catch (e) { toast('No pude descartar: ' + (e.message || e)); }
 }
 
 async function crearDesdeSugerencia(i) {
@@ -666,6 +693,9 @@ async function crearDesdeSugerencia(i) {
     if (error) throw error;
     if (card) card.style.display = 'none';
     sugCache = sugCache.filter((_, idx) => idx !== i);
+    const btnS = document.getElementById('btn-sugerencias');
+    if (sugCache.length) btnS.textContent = `🆕 ${sugCache.length}`;
+    else btnS.style.display = 'none';
     toast('✓ Creado — revisalo con el ✏️ para completar los datos');
     cargarEspalma();
   } catch (e) { toast('No pude crear: ' + (e.message || e)); }
