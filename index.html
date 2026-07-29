@@ -274,6 +274,7 @@ body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Ro
     <label>Precio del set</label><input id="esp-precio" type="number" inputmode="decimal" placeholder="0">
     <label>Nota (opcional)</label><input id="esp-nota" placeholder="Aclaraciones">
     <label>Orden</label><input id="esp-orden" type="number" placeholder="1, 2, 3…">
+    <label>N° en el local (solo pantallas)</label><input id="esp-numero" placeholder="Ej: 3">
     <label>Patrón de stock (avanzado)</label><input id="esp-patron" placeholder="Ej: SET AMERICA%">
     <div class="login-error" id="esp-error" style="margin-top:8px;"></div>
     <div style="display:flex;gap:8px;margin-top:14px;">
@@ -412,10 +413,11 @@ function verTab(t) {
 
 // ═══ Listas (Espalma / Ropa de cama / Alf. baño / Alfombras) ═══
 const LISTAS_CATS = [
-  { id: 'espalma',   label: '🛁 Espalma',      cols: ['Toalla', 'Toallón', 'Gramaje', 'Precio set'] },
+  { id: 'espalma',   label: '🧴 Toallas',      cols: ['Toalla / Medida', 'Toallón', 'Gramaje', 'Precio'] },
   { id: 'ropa_cama', label: '🛏 Ropa de cama', cols: ['Tipo', 'Medidas', 'Detalle', 'Precio'] },
   { id: 'alf_bano',  label: '🚿 Alf. baño',    cols: ['Tipo', 'Medida', 'Material', 'Precio'] },
   { id: 'alfombras', label: '🧶 Alfombras',    cols: ['Medida', 'Material', '', 'Precio'] },
+  { id: 'pantallas', label: '💡 Pantallas',    cols: ['Medida', 'Material', 'Prov.', 'Precio'], numero: true },
 ];
 let listaCat = 'espalma';
 let espVerSinStock = false;
@@ -478,10 +480,19 @@ async function actualizarPreciosEspalma() {
     conPatron.forEach((m, idx) => {
       const filas = resultados[idx].data || [];
       if (!filas.length) return;
-      // Precio mas frecuente (filas de alcorta con precio cargado)
+      // Precio mas frecuente ENTRE LOS QUE TIENEN STOCK.
+      // (jul 2026) Antes se contaban todos los SKUs del patron y los colores
+      // discontinuados —con precio viejo— podian ganar la votacion: el Set Top
+      // mostraba $94.000 (6 colores sin stock) en vez de $121.000 (6 con stock).
+      const stockPorSku = {};
+      for (const f of filas) stockPorSku[f.sku] = (stockPorSku[f.sku] || 0) + parseFloat(f.stock || 0);
       const cuenta = {};
-      for (const f of filas) if (f.local === 'alcorta' && f.precio > 0)
+      for (const f of filas) if (f.local === 'alcorta' && f.precio > 0 && stockPorSku[f.sku] > 0)
         cuenta[f.precio] = (cuenta[f.precio] || 0) + 1;
+      // Si ningun color tiene stock, caemos al criterio viejo (mostrar algo)
+      if (!Object.keys(cuenta).length)
+        for (const f of filas) if (f.local === 'alcorta' && f.precio > 0)
+          cuenta[f.precio] = (cuenta[f.precio] || 0) + 1;
       const ordenadas = Object.entries(cuenta).sort((a, b) => b[1] - a[1]);
       if (ordenadas.length) {
         const precio = parseFloat(ordenadas[0][0]);
@@ -507,8 +518,18 @@ function renderEspalma() {
   const cat = LISTAS_CATS.find(c => c.id === listaCat) || LISTAS_CATS[0];
   // Modelos sin ningun color en stock: ocultos (admin los ve atenuados para poder editarlos)
   // Sin stock: ocultos para todos; admin puede mostrarlos con el toggle 👁
-  const visibles = espCache.filter(m => (m.categoria || 'espalma') === listaCat)
+  let visibles = espCache.filter(m => (m.categoria || 'espalma') === listaCat)
     .filter(m => m.colores_stock !== 0 || (esAdmin && espVerSinStock));
+  if (cat.numero) {
+    // Numeradas primero (orden del local), después las que no tienen número
+    visibles = visibles.slice().sort((a, b) => {
+      const na = parseInt(a.numero_local), nb = parseInt(b.numero_local);
+      if (!isNaN(na) && !isNaN(nb)) return na - nb;
+      if (!isNaN(na)) return -1;
+      if (!isNaN(nb)) return 1;
+      return (a.orden || 0) - (b.orden || 0);
+    });
+  }
   if (!visibles.length) {
     cont.innerHTML = '<div class="empty"><div class="big">🧺</div>No hay modelos con stock en esta lista.' +
       (esAdmin ? '<br>Usá el botón ＋ para agregar.' : '') + '</div>';
@@ -516,6 +537,7 @@ function renderEspalma() {
   }
   const filas = visibles.map(m => `
     <tr class="${m.patron ? 'esp-fila-click' : ''}" ${m.colores_stock === 0 ? 'style="opacity:0.45;"' : ''} ${m.patron ? `onclick="abrirEspalmaStock(${m.id})" title="Ver stock por color"` : ''}>
+      ${cat.numero ? `<td style="text-align:center;font-weight:700;color:var(--primary);">${m.numero_local ? escHtml(m.numero_local) : '·'}</td>` : ''}
       <td><span class="esp-modelo">${escHtml(m.modelo)}</span>
           ${m.nota ? `<div class="esp-nota">${escHtml(m.nota)}</div>` : ''}
           ${m.colores_stock != null ? `<div class="esp-nota">${m.colores_stock === 1 ? '1 color' : m.colores_stock + ' colores'} en stock</div>` : ''}</td>
@@ -527,7 +549,7 @@ function renderEspalma() {
     </tr>`).join('');
   cont.innerHTML = `<div class="esp-wrap"><table class="esp-tabla">
     <thead><tr>
-      <th>Modelo</th><th>${cat.cols[0]}</th><th>${cat.cols[1]}</th><th>${cat.cols[2]}</th><th>${cat.cols[3]}</th>${esAdmin ? '<th></th>' : ''}
+      ${cat.numero ? '<th style="text-align:center;">N°</th>' : ''}<th>Modelo</th><th>${cat.cols[0]}</th><th>${cat.cols[1]}</th><th>${cat.cols[2]}</th><th>${cat.cols[3]}</th>${esAdmin ? '<th></th>' : ''}
     </tr></thead>
     <tbody>${filas}</tbody>
   </table></div>`;
@@ -602,6 +624,7 @@ function abrirEspalmaEdit(id) {
   document.getElementById('esp-nota').value = m?.nota || '';
   document.getElementById('esp-orden').value = m?.orden ?? (espCache.length + 1);
   document.getElementById('esp-patron').value = m?.patron || '';
+  document.getElementById('esp-numero').value = m?.numero_local || '';
   document.getElementById('esp-error').textContent = '';
   document.getElementById('esp-borrar').style.display = m ? '' : 'none';
   document.getElementById('esp-modal-bg').classList.add('open');
@@ -624,6 +647,7 @@ async function guardarEspalma() {
     nota: document.getElementById('esp-nota').value.trim() || null,
     orden: parseInt(document.getElementById('esp-orden').value) || 0,
     patron: document.getElementById('esp-patron').value.trim() || null,
+    numero_local: document.getElementById('esp-numero').value.trim() || null,
     updated_at: new Date().toISOString(),
   };
   try {
