@@ -450,9 +450,7 @@ function renderListasChips() {
   if (menu) {
     menu.innerHTML = LISTAS_CATS.map(c =>
       `<button class="${c.id === listaCat && espCargado ? 'on' : ''}" onclick="setListaCat('${c.id}')">${c.label}</button>`
-    ).join('') + (esAdmin
-      ? `<div class="sep"></div><button class="${espVerSinStock ? 'on' : ''}" onclick="event.stopPropagation();espVerSinStock=!espVerSinStock;renderListasChips();renderEspalma();">👁 Ver también sin stock</button>`
-      : '');
+    ).join('');
   }
   const tit = document.getElementById('listas-titulo');
   if (tit) tit.textContent = (LISTAS_CATS.find(c => c.id === listaCat) || {}).label || '';
@@ -550,7 +548,7 @@ function renderEspalma() {
   // Modelos sin ningun color en stock: ocultos (admin los ve atenuados para poder editarlos)
   // Sin stock: ocultos para todos; admin puede mostrarlos con el toggle 👁
   let visibles = espCache.filter(m => (m.categoria || 'espalma') === listaCat)
-    .filter(m => m.colores_stock !== 0 || (esAdmin && espVerSinStock));
+    .filter(m => m.colores_stock !== 0);
   if (cat.numero) {
     // Numeradas primero (orden del local), después las que no tienen número
     visibles = visibles.slice().sort((a, b) => {
