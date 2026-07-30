@@ -1058,6 +1058,7 @@ async function solicitarImagen(sku) {
       await sb.functions.invoke('enviar-push', {
         body: {
           empleado_id: empId,
+          app: 'stock',
           title: '📷 Falta imagen de producto',
           body: `Al SKU ${sku}${desc} le falta imagen. ¿La subís al Drive?`,
           tag: 'img-' + sku,
@@ -1146,6 +1147,7 @@ async function toggleNotifs() {
       plataforma: /iPhone|iPad/.test(navigator.userAgent) ? 'ios'
                 : /Android/.test(navigator.userAgent) ? 'android' : 'web',
       activa: true,
+      app: 'stock',
       last_seen_at: new Date().toISOString(),
     }, { onConflict: 'endpoint' });
     if (error) throw error;
@@ -1351,6 +1353,7 @@ async function enviarTraslado() {
     await sb.functions.invoke('enviar-push', {
       body: {
         local_todos: local,
+        app: 'stock',
         title: '🔁 Pedido de traslado',
         body: cuerpo,
         tag: 'tras-' + fila.id,
@@ -1430,6 +1433,7 @@ async function marcarRevisando() {
       await sb.functions.invoke('enviar-push', {
         body: {
           empleado_id: t.solicitante_empleado_id,
+          app: 'stock',
           title: '👀 Están revisando tu pedido',
           body: `${LOCAL_LABEL[t.local_origen]}: ${quien || 'una compañera'} está buscando ${t.cantidad} × ${t.sku}`,
           tag: 'tras-' + t.id,
@@ -1457,6 +1461,7 @@ async function responderTraslado(tiene) {
       await sb.functions.invoke('enviar-push', {
         body: {
           empleado_id: t.solicitante_empleado_id,
+          app: 'stock',
           title: tiene ? '✅ Te lo guardaron' : '❌ No está la mercadería',
           body: `${LOCAL_LABEL[t.local_origen]}: ${tiene ? 'te guardaron' : 'no encontraron'} ${t.cantidad} × ${t.sku}${quien ? ' · respondió ' + quien : ''}`,
           tag: 'tras-' + t.id,
