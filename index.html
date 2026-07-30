@@ -227,6 +227,7 @@ tr.drag-over { border-top: 3px solid var(--primary); }
         <button id="mi-exacto" onclick="toggleExacto()">🎯 Solo resultado exacto</button>
         <button id="mi-constock" onclick="toggleSinStock()">🚫 Ocultar sin stock</button>
         <button id="mi-proveedor" onclick="toggleProveedor()">🏭 Buscar por proveedor</button>
+        <button id="mi-tabla" onclick="toggleVistaTabla()">📋 Vista tabla</button>
         <button onclick="doLogout()">👋 Cerrar sesión</button>
       </div>
     </div>
@@ -434,6 +435,16 @@ const escHtml = s => String(s ?? '').replace(/[&<>"']/g, c =>
 // BÚSQUEDA (snapshot en Supabase)
 // ═══════════════════════════════════════════════════════════════════
 let ocultarSinStock = localStorage.getItem('stock_ocultar_sin') === '1';
+// Vista tabla compacta (sin fotos): SKU + descripción + stock por local.
+// Para cuando la encargada necesita repasar muchos artículos rápido.
+let vistaTabla = localStorage.getItem('stock_vista_tabla') === '1';
+
+function toggleVistaTabla() {
+  vistaTabla = !vistaTabla;
+  localStorage.setItem('stock_vista_tabla', vistaTabla ? '1' : '0');
+  actualizarChipFiltro();
+  if (ultimoResultado) render(ultimoResultado.articulos, ultimoResultado.q);
+}
 let soloExacto = localStorage.getItem('stock_exacto') === '1';
 let ultimoResultado = null;
 
@@ -475,6 +486,7 @@ function actualizarChipFiltro() {
   document.getElementById('mi-constock').classList.toggle('on', ocultarSinStock);
   document.getElementById('mi-exacto').classList.toggle('on', soloExacto);
   document.getElementById('mi-proveedor')?.classList.toggle('on', buscarPorProveedor);
+  document.getElementById('mi-tabla')?.classList.toggle('on', vistaTabla);
 }
 actualizarChipFiltro();
 
@@ -1063,6 +1075,39 @@ function render(articulos, q) {
     if (ea !== eb) return ea - eb;
     return (a.descripcion || a.sku).localeCompare(b.descripcion || b.sku);
   });
+  if (vistaTabla) {
+    // Vista compacta: hasta 150 filas, sin imágenes
+    const filas = articulos.slice(0, 150);
+    const celda = (a, loc) => {
+      const st = a.stocks[loc];
+      if (st == null) return '<td style="text-align:center;color:#d1d5db;">—</td>';
+      const v = Math.round(st);
+      return `<td style="text-align:center;font-family:ui-monospace,monospace;font-weight:600;color:${v > 0 ? 'var(--text)' : '#dc2626'};">${v}</td>`;
+    };
+    cont.innerHTML = `
+      <div style="background:white;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,0.08);overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+          <thead><tr style="background:var(--primary);color:white;font-size:11px;text-transform:uppercase;">
+            <th style="padding:8px 10px;text-align:left;">SKU</th>
+            <th style="padding:8px 10px;text-align:left;">Descripción</th>
+            <th style="padding:8px 6px;">Alc</th>
+            <th style="padding:8px 6px;">Uni</th>
+            <th style="padding:8px 6px;">Ofi</th>
+          </tr></thead>
+          <tbody>${filas.map((a, i) => `
+            <tr style="border-top:1px solid #f3f4f6;${i % 2 ? 'background:#fafafa;' : ''}${a.discontinuado ? 'opacity:0.5;' : ''}cursor:pointer;" onclick="document.getElementById('q').value='${escAttr(a.sku)}';vistaTabla=false;localStorage.setItem('stock_vista_tabla','0');actualizarChipFiltro();buscar();">
+              <td style="padding:7px 10px;font-family:ui-monospace,monospace;font-weight:700;white-space:nowrap;">${escHtml(a.sku)}</td>
+              <td style="padding:7px 10px;">${escHtml(a.descripcion || '—')}${a.discontinuado ? ' <span style="font-size:10px;color:#b91c1c;">DISC</span>' : ''}</td>
+              ${celda(a, 'alcorta')}${celda(a, 'unicenter')}${celda(a, 'oficina')}
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-top:8px;text-align:center;">
+        ${filas.length} artículo(s)${articulos.length > 150 ? ` de ${articulos.length} — afiná la búsqueda` : ''} · tocá una fila para ver la ficha completa
+      </div>`;
+    return;
+  }
   const top = articulos.slice(0, 30);
   cont.innerHTML = top.map(cardHtml).join('') +
     (articulos.length > 30 ? `<div class="empty">…y ${articulos.length - 30} resultados más. Afiná la búsqueda.</div>` : '');
