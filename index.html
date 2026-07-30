@@ -215,7 +215,7 @@ tr.drag-over { border-top: 3px solid var(--primary); }
 <div id="view-stock">
 <div class="search-wrap">
   <div class="search-box">
-    <input id="q" type="search" placeholder="SKU o descripción (mín. 2) · ej: 044 o dispenser" autocomplete="off" autofocus
+    <input id="q" type="search" placeholder="SKU o descripción (mín. 2) · ej: 044 o dispenser" data-ph-original="SKU o descripción (mín. 2) · ej: 044 o dispenser" autocomplete="off" autofocus
            enterkeyhint="search">
     <button onclick="buscar()" aria-label="Buscar">🔍</button>
     <button onclick="abrirScanner()" id="btn-scan" aria-label="Escanear código de barras" title="Escanear código de barras"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="display:block;"><path d="M4 7V5h2M20 7V5h-2M4 17v2h2M20 17v2h-2M7 8v8M10.5 8v8M13.5 8v8M17 8v8"/></svg></button>
@@ -226,6 +226,7 @@ tr.drag-over { border-top: 3px solid var(--primary); }
         <button id="mi-notifs" onclick="toggleNotifs()">🔕 Activar notificaciones</button>
         <button id="mi-exacto" onclick="toggleExacto()">🎯 Solo resultado exacto</button>
         <button id="mi-constock" onclick="toggleSinStock()">🚫 Ocultar sin stock</button>
+        <button id="mi-proveedor" onclick="toggleProveedor()">🏭 Buscar por proveedor</button>
         <button onclick="doLogout()">👋 Cerrar sesión</button>
       </div>
     </div>
@@ -443,6 +444,27 @@ function toggleExacto() {
   if (ultimoResultado) render(ultimoResultado.articulos, ultimoResultado.q);
 }
 
+// ── Modo "buscar por proveedor": el buscador filtra por el campo proveedor
+//    en vez de sku/descripción. Solo aplica mientras el filtro esté activo.
+//    Atajos: FGR → Familia Garcia Regueira · LOLI → El Rincon De Loli.
+let buscarPorProveedor = false;   // arranca SIEMPRE apagado (no persiste)
+const PROVEEDOR_ALIAS = {
+  'fgr': 'Familia Garcia Regueira',
+  'loli': 'Rincon De Loli',
+  'espalma': 'Espalma',
+  'dukaan': 'Dukaan',
+};
+function toggleProveedor() {
+  buscarPorProveedor = !buscarPorProveedor;
+  actualizarChipFiltro();
+  const inp = document.getElementById('q');
+  inp.placeholder = buscarPorProveedor
+    ? 'Proveedor (ej: FGR, Espalma, Loli)…'
+    : inp.dataset.phOriginal || inp.placeholder;
+  inp.focus();
+  if (inp.value.trim().length >= 2) buscar();
+}
+
 function toggleSinStock() {
   ocultarSinStock = !ocultarSinStock;
   localStorage.setItem('stock_ocultar_sin', ocultarSinStock ? '1' : '0');
@@ -452,6 +474,7 @@ function toggleSinStock() {
 function actualizarChipFiltro() {
   document.getElementById('mi-constock').classList.toggle('on', ocultarSinStock);
   document.getElementById('mi-exacto').classList.toggle('on', soloExacto);
+  document.getElementById('mi-proveedor')?.classList.toggle('on', buscarPorProveedor);
 }
 actualizarChipFiltro();
 
@@ -973,10 +996,16 @@ async function buscar() {
   // Sanitizar para el filtro or= de PostgREST (sin comas/paréntesis/%)
   const qSafe = q.replace(/[,()%\\]/g, ' ').trim();
   try {
-    const { data, error } = await sb.from('stock_articulos')
-      .select('local, sku, descripcion, descripcion_adicional, proveedor, stock, precio, updated_at, discontinuado')
-      .or(`sku.ilike.%${qSafe}%,descripcion.ilike.%${qSafe}%,descripcion_adicional.ilike.%${qSafe}%`)
-      .limit(150);
+    let query = sb.from('stock_articulos')
+      .select('local, sku, descripcion, descripcion_adicional, proveedor, stock, precio, updated_at, discontinuado');
+    if (buscarPorProveedor) {
+      // Modo proveedor: matchea solo el campo proveedor (con alias tipo FGR)
+      const alias = PROVEEDOR_ALIAS[qSafe.toLowerCase()] || qSafe;
+      query = query.ilike('proveedor', `%${alias}%`).limit(400);
+    } else {
+      query = query.or(`sku.ilike.%${qSafe}%,descripcion.ilike.%${qSafe}%,descripcion_adicional.ilike.%${qSafe}%`).limit(150);
+    }
+    const { data, error } = await query;
     if (error) throw error;
     ultimoResultado = { articulos: agrupar(data || []), q };
     if ((data || []).length) guardarReciente(q);
