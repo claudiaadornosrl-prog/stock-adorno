@@ -506,12 +506,20 @@ function setListaCat(id) {
 }
 
 let esAdmin = false;
+let miLocalStock = 'oficina';   // local del usuario, para el orden de las listas
 let espCache = [];
 
 async function detectarAdmin() {
   try {
     const { data } = await sb.rpc('rrhh_current_user');
     esAdmin = data?.rol === 'admin';
+    // Resolver el local: gerencia > legajo > oficina (admin/extras)
+    if (data?.local_gerencia) miLocalStock = data.local_gerencia;
+    else if (data?.empleado_id) {
+      const { data: e } = await sb.from('rrhh_empleados')
+        .select('local').eq('id', data.empleado_id).single();
+      if (e?.local && ['alcorta','unicenter','oficina'].includes(e.local)) miLocalStock = e.local;
+    }
   } catch (_) { esAdmin = false; }
   document.getElementById('btn-esp-add').style.display = esAdmin ? '' : 'none';
   if (espCargado) { renderListasChips(); renderEspalma(); }
@@ -526,6 +534,14 @@ async function cargarEspalma() {
       .select('*').order('orden').order('modelo');
     if (error) throw error;
     espCache = data || [];
+    // Orden propio de ESTE local (cada punto de venta acomoda su lista;
+    // si un modelo no tiene orden local, usa el orden general)
+    try {
+      const { data: ol } = await sb.from('stock_orden_local')
+        .select('modelo_id, orden').eq('local', miLocalStock);
+      const mapa = Object.fromEntries((ol || []).map(r => [r.modelo_id, r.orden]));
+      for (const m of espCache) m.orden_local = mapa[m.id] ?? null;
+    } catch (_) {}
     renderEspalma();
     actualizarPreciosEspalma();
     chequearSugerencias();
@@ -606,7 +622,8 @@ function renderEspalma() {
   // Sin stock: ocultos para todos; admin puede mostrarlos con el toggle 👁
   let visibles = espCache.filter(m => (m.categoria || 'espalma') === listaCat)
     .filter(m => m.colores_stock !== 0);
-  visibles = visibles.slice().sort((a, b) => (a.orden || 0) - (b.orden || 0));
+  const ordenDe = m => m.orden_local ?? ((m.orden || 0) + 100000);  // local manda; sin local → al final por orden general
+  visibles = visibles.slice().sort((a, b) => ordenDe(a) - ordenDe(b));
   if (cat.numero) {
     // Numeradas primero (orden del local), después las que no tienen número
     visibles = visibles.slice().sort((a, b) => {
@@ -783,14 +800,13 @@ function initDragListas() {
         .map(tr => parseInt(tr.dataset.id)).filter(Boolean);
       if (!ids.length) return;
       try {
-        const { error } = await sb.rpc('espalma_reordenar', { p_ids: ids });
+        const { error } = await sb.rpc('espalma_reordenar_local', { p_local: miLocalStock, p_ids: ids });
         if (error) throw error;
-        // Reflejar el orden nuevo en la cache local
         ids.forEach((id, i) => {
           const m = espCache.find(x => x.id === id);
-          if (m) m.orden = i + 1;
+          if (m) m.orden_local = i + 1;
         });
-        toast('✓ Orden guardado');
+        toast('✓ Orden guardado para ' + (miLocalStock === 'oficina' ? 'Oficina' : miLocalStock.charAt(0).toUpperCase() + miLocalStock.slice(1)));
       } catch (e) { toast('No pude guardar el orden: ' + (e.message || e)); }
     };
     h.addEventListener('pointerup', soltar);
