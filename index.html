@@ -1009,7 +1009,7 @@ async function buscar() {
   const qSafe = q.replace(/[,()%\\]/g, ' ').trim();
   try {
     let query = sb.from('stock_articulos')
-      .select('local, sku, descripcion, descripcion_adicional, proveedor, stock, precio, updated_at, discontinuado');
+      .select('local, sku, descripcion, descripcion_adicional, proveedor, material, stock, precio, updated_at, discontinuado');
     if (buscarPorProveedor) {
       // Modo proveedor: matchea solo el campo proveedor (con alias tipo FGR)
       const alias = PROVEEDOR_ALIAS[qSafe.toLowerCase()] || qSafe;
@@ -1032,13 +1032,14 @@ function agrupar(rows) {
   const map = {};
   for (const r of rows) {
     const a = map[r.sku] || (map[r.sku] = {
-      sku: r.sku, descripcion: null, desc_adic: null, proveedor: null, precio: null, updated_at: null, stocks: {}, discontinuado: false,
+      sku: r.sku, descripcion: null, desc_adic: null, proveedor: null, material: null, precio: null, updated_at: null, stocks: {}, discontinuado: false,
     });
     a.stocks[r.local] = parseFloat(r.stock || 0);
     if (r.discontinuado) a.discontinuado = true;
     if (r.descripcion && !a.descripcion) a.descripcion = r.descripcion;
     if (r.descripcion_adicional && !a.desc_adic) a.desc_adic = r.descripcion_adicional;
     if (r.proveedor && !a.proveedor) a.proveedor = r.proveedor;
+    if (r.material && !a.material) a.material = r.material;
     if (r.precio != null) a.precio = Math.max(a.precio ?? 0, parseFloat(r.precio));
     if (!a.updated_at || r.updated_at > a.updated_at) a.updated_at = r.updated_at;
   }
@@ -1291,7 +1292,8 @@ function compartirWA(sku) {
   if (!a) return;
   let txt = `*${a.descripcion || sku}*`;
   if (a.desc_adic) txt += `\n${a.desc_adic}`;
-  if (a.precio != null) txt += `\n💲 ${fmt$(a.precio)}`;
+  if (a.material) txt += `\nMaterial: ${a.material}`;
+  if (a.precio != null) txt += `\nPrecio: ${fmt$(a.precio)}`;
   if (imgUrls[sku]) txt += `\n${imgUrls[sku]}`;
   window.open('https://wa.me/?text=' + encodeURIComponent(txt), '_blank');
 }
@@ -1592,6 +1594,7 @@ function cardHtml(a) {
         <div class="desc">${escHtml(a.descripcion || 'Sin descripción')}</div>
         ${a.desc_adic ? `<div class="desc-adic">${escHtml(a.desc_adic)}</div>` : ''}
         ${a.proveedor ? `<div class="proveedor">🏷 ${escHtml(a.proveedor)}</div>` : ''}
+        ${a.material ? `<div class="proveedor" title="Material">🧵 ${escHtml(a.material)}</div>` : ''}
       </div>
       <div class="precio">${a.precio != null ? fmt$(a.precio) : '—'}<small>precio de venta</small></div>
     </div>
