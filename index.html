@@ -202,6 +202,7 @@ tr.drag-over { border-top: 3px solid var(--primary); }
 
 <div id="app" style="display:none;">
 <div class="header">
+  <a href="https://claudiaadornosrl-prog.github.io/hub/" title="Volver al Hub" aria-label="Volver al Hub" style="text-decoration:none;font-size:19px;line-height:1;color:#D97757;padding:4px 8px;border-radius:8px;background:rgba(255,255,255,0.15);">✳</a>
   <span style="font-size:22px;">📦</span>
   <span class="title">Stock <span class="sub">Claudia Adorno</span></span>
   <div class="htabs">
@@ -1250,7 +1251,7 @@ async function toggleNotifs() {
       activa: true,
       app: 'stock',
       last_seen_at: new Date().toISOString(),
-    }, { onConflict: 'endpoint' });
+    }, { onConflict: 'endpoint,app' });
     if (error) throw error;
     toast('🔔 Listo — vas a recibir los pedidos de traslado');
     actualizarBtnNotifs();
