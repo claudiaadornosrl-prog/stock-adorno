@@ -1,5 +1,5 @@
 // Service Worker — Stock Adorno
-const CACHE_VERSION = 'stock-adorno-v48-push-endpoint-app';
+const CACHE_VERSION = 'stock-adorno-v49-hub-mono';
 const CACHE_ASSETS = ['./', './index.html', './manifest.webmanifest', './favicon.svg'];
 
 self.addEventListener('install', e => {
