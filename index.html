@@ -211,8 +211,11 @@ tr.drag-over { border-top: 3px solid var(--primary); }
       <button class="htab" id="tab-espalma" onclick="toggleListasMenu(event)" title="Listas de productos" aria-label="Listas">☰</button>
       <div class="listas-menu" id="listas-menu"></div>
     </div>
+    <button class="htab" id="tab-redis" onclick="verTab('redis')" title="Redistribución entre sucursales" aria-label="Redistribución" style="display:none;">🔄</button>
   </div>
 </div>
+
+<div id="view-redis" style="display:none;padding:12px;max-width:760px;margin:0 auto;"></div>
 
 <div id="view-stock">
 <div class="search-wrap">
@@ -497,10 +500,13 @@ let espCargado = false;
 function verTab(t) {
   document.getElementById('view-stock').style.display = t === 'stock' ? '' : 'none';
   document.getElementById('view-espalma').style.display = t === 'espalma' ? '' : 'none';
+  document.getElementById('view-redis').style.display = t === 'redis' ? '' : 'none';
   document.getElementById('tab-stock').classList.toggle('active', t === 'stock');
   document.getElementById('tab-espalma').classList.toggle('active', t === 'espalma');
+  document.getElementById('tab-redis').classList.toggle('active', t === 'redis');
   if (t === 'espalma') renderListasChips();
   if (t === 'espalma' && !espCargado) { espCargado = true; cargarEspalma(); }
+  if (t === 'redis') cargarRedistribucion();
 }
 
 // ═══ Listas (Espalma / Ropa de cama / Alf. baño / Alfombras) ═══
@@ -543,6 +549,7 @@ function setListaCat(id) {
 }
 
 let esAdmin = false;
+let esGerente = false;          // encargada de local (ve Redistribución)
 let miLocalStock = 'oficina';   // local del usuario, para el orden de las listas
 let espCache = [];
 
@@ -551,6 +558,7 @@ async function detectarAdmin() {
     const { data } = await sb.rpc('rrhh_current_user');
     esAdmin = data?.rol === 'admin';
     // Resolver el local: gerencia > legajo > oficina (admin/extras)
+    esGerente = data?.rol === 'gerente';
     if (data?.local_gerencia) miLocalStock = data.local_gerencia;
     else if (data?.empleado_id) {
       const { data: e } = await sb.from('rrhh_empleados')
@@ -559,6 +567,11 @@ async function detectarAdmin() {
     }
   } catch (_) { esAdmin = false; }
   document.getElementById('btn-esp-add').style.display = esAdmin ? '' : 'none';
+  document.getElementById('tab-redis').style.display = (esAdmin || esGerente) ? '' : 'none';
+  if (new URLSearchParams(location.search).get('vista') === 'redistribucion' && (esAdmin || esGerente)) {
+    history.replaceState(null, '', location.pathname);
+    verTab('redis');
+  }
   if (espCargado) { renderListasChips(); renderEspalma(); }
 }
 
@@ -1496,6 +1509,108 @@ function abrirModalRespuesta(t, miNombre) {
     e2.style.display = 'flex';
   }
   document.getElementById('trasresp-modal-bg').style.display = 'flex';
+}
+
+// ═══ 🔄 Redistribución entre sucursales (sugerencias semanales) ═══
+let _redisCache = [];
+
+async function cargarRedistribucion() {
+  const cont = document.getElementById('view-redis');
+  cont.innerHTML = '<div class="empty"><span class="spinner"></span></div>';
+  try {
+    const { data, error } = await sb.from('stock_redistribucion')
+      .select('*').eq('estado', 'pendiente')
+      .order('stock_origen', { ascending: false }).limit(500);
+    if (error) throw error;
+    _redisCache = data || [];
+    renderRedistribucion();
+  } catch (e) {
+    cont.innerHTML = `<div class="empty">Error: ${escHtml(e.message || e)}</div>`;
+  }
+}
+
+function renderRedistribucion() {
+  const cont = document.getElementById('view-redis');
+  const gen = _redisCache[0]?.generado_at
+    ? new Date(_redisCache[0].generado_at).toLocaleDateString('es-AR') : '';
+  const paraMi  = esAdmin ? [] : _redisCache.filter(s => s.local_destino === miLocalStock);
+  const desdeMi = esAdmin ? [] : _redisCache.filter(s => s.local_origen === miLocalStock && s.local_destino !== miLocalStock);
+  const filaHtml = (s, accionable) => `
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid #f1f5f9;background:#fff;">
+      <div style="min-width:0;">
+        <div style="font-weight:700;font-size:14px;">${escHtml(s.sku)}</div>
+        <div style="font-size:12px;color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(s.descripcion || '')}</div>
+        <div style="font-size:12px;margin-top:3px;">${LOCAL_LABEL[s.local_origen] || s.local_origen}
+          <b>(${s.stock_origen})</b> → ${LOCAL_LABEL[s.local_destino] || s.local_destino} <b>(${s.stock_destino})</b>
+          · sugerido: <b>${s.cantidad_sugerida}</b></div>
+      </div>
+      ${accionable ? `<div style="display:flex;flex-direction:column;gap:5px;flex-shrink:0;">
+        <button onclick="usarSugerencia(${s.id})" style="background:#0f6e56;color:#fff;border:none;border-radius:8px;padding:7px 12px;font-size:12px;font-weight:700;cursor:pointer;">🔁 Pedir traslado</button>
+        <button onclick="ignorarSugerencia(${s.id})" style="background:none;border:1px solid #e2e8f0;border-radius:8px;padding:5px 12px;font-size:12px;color:#64748b;cursor:pointer;">Ignorar</button>
+      </div>` : ''}
+    </div>`;
+  const seccion = (titulo, items, accionable) => !items.length ? '' : `
+    <div style="margin-bottom:18px;">
+      <div style="font-weight:800;font-size:14px;margin-bottom:6px;">${titulo} <span style="color:#94a3b8;font-weight:500;">(${items.length})</span></div>
+      <div style="border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">${items.map(s => filaHtml(s, accionable)).join('')}</div>
+    </div>`;
+  let cuerpo;
+  if (esAdmin) {
+    cuerpo = seccion('📥 Para Alcorta', _redisCache.filter(s => s.local_destino === 'alcorta'), true)
+           + seccion('📥 Para Unicenter', _redisCache.filter(s => s.local_destino === 'unicenter'), true);
+  } else {
+    cuerpo = seccion('📥 Te falta — podés pedirlo', paraMi, true)
+           + seccion('📤 Te sobra — se lo sugerimos al otro local', desdeMi, false);
+  }
+  cont.innerHTML = `
+    <div style="margin-bottom:12px;">
+      <div style="font-weight:800;font-size:17px;">🔄 Redistribución entre sucursales</div>
+      <div style="font-size:12px;color:#64748b;">Sugerencias generadas ${gen ? 'el ' + gen : ''} — se renuevan los lunes 10:00.
+        Al pedir un traslado se usa el circuito de siempre (le llega push al local de origen).</div>
+    </div>
+    ${cuerpo || '<div class="empty">🎉 No hay sugerencias pendientes.</div>'}`;
+}
+
+async function usarSugerencia(id) {
+  const s = _redisCache.find(x => x.id === id);
+  if (!s) return;
+  let quien = '', empId = null;
+  try { quien = (await sb.auth.getUser()).data?.user?.email || ''; } catch (_) {}
+  try { empId = (await sb.rpc('rrhh_current_user')).data?.empleado_id ?? null; } catch (_) {}
+  const nombre = await nombrePropio();
+  try {
+    const { data: fila, error } = await sb.from('stock_traslados').insert({
+      sku: s.sku, descripcion: s.descripcion || '', cantidad: s.cantidad_sugerida,
+      local_origen: s.local_origen,
+      solicitante_email: quien, solicitante_empleado_id: empId, solicitante_nombre: nombre,
+    }).select('id').single();
+    if (error) throw error;
+    await sb.from('stock_redistribucion').update({
+      estado: 'usada', traslado_id: fila.id, resuelto_por: nombre || quien, resuelto_at: new Date().toISOString(),
+    }).eq('id', id);
+    await sb.functions.invoke('enviar-push', {
+      body: {
+        local_todos: s.local_origen, app: 'stock',
+        title: '🔁 Pedido de traslado (redistribución)',
+        body: `¿Tienen ${s.cantidad_sugerida} × ${s.sku}${s.descripcion ? ' (' + s.descripcion + ')' : ''} para apartar?${nombre ? ' Pide ' + nombre : ''}`,
+        tag: 'tras-' + fila.id,
+        url: 'https://claudiaadornosrl-prog.github.io/stock-adorno/?traslado=' + fila.id,
+      }
+    });
+    toast('📣 Traslado pedido a ' + (LOCAL_LABEL[s.local_origen] || s.local_origen));
+    cargarRedistribucion();
+  } catch (e) { toast('No pude pedir el traslado: ' + (e.message || e)); }
+}
+
+async function ignorarSugerencia(id) {
+  try {
+    const nombre = await nombrePropio();
+    await sb.from('stock_redistribucion').update({
+      estado: 'ignorada', resuelto_por: nombre, resuelto_at: new Date().toISOString(),
+    }).eq('id', id);
+    toast('Sugerencia ignorada');
+    cargarRedistribucion();
+  } catch (e) { toast('Error: ' + (e.message || e)); }
 }
 
 async function chequearTrasladoURL() {
