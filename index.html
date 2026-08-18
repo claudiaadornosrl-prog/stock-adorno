@@ -1452,7 +1452,7 @@ function cerrarTraslado() {
 }
 async function enviarTraslado() {
   if (!trasladoActual) return;
-  const { sku, local, desc } = trasladoActual;
+  const { sku, local, desc, sugerenciaId } = trasladoActual;
   const cant = parseInt(document.getElementById('tras-cant').value) || 1;
   cerrarTraslado();
   let quien = '', empId = null;
@@ -1477,6 +1477,13 @@ async function enviarTraslado() {
       }
     });
     toast('📣 Pedido enviado a ' + LOCAL_LABEL[local] + ' — te llega push cuando respondan');
+    if (sugerenciaId) {
+      await sb.from('stock_redistribucion').update({
+        estado: 'usada', traslado_id: fila.id,
+        resuelto_por: nombre || quien, resuelto_at: new Date().toISOString(),
+      }).eq('id', sugerenciaId);
+      cargarRedistribucion();
+    }
   } catch (e) {
     toast('No pude enviar el pedido: ' + (e.message || e));
   }
@@ -1571,35 +1578,17 @@ function renderRedistribucion() {
     ${cuerpo || '<div class="empty">🎉 No hay sugerencias pendientes.</div>'}`;
 }
 
-async function usarSugerencia(id) {
+function usarSugerencia(id) {
+  // (14-ago) Abre el modal de traslado de siempre, con la cantidad sugerida
+  // PRE-CARGADA pero editable. Al enviarse, la sugerencia se marca usada.
   const s = _redisCache.find(x => x.id === id);
   if (!s) return;
-  let quien = '', empId = null;
-  try { quien = (await sb.auth.getUser()).data?.user?.email || ''; } catch (_) {}
-  try { empId = (await sb.rpc('rrhh_current_user')).data?.empleado_id ?? null; } catch (_) {}
-  const nombre = await nombrePropio();
-  try {
-    const { data: fila, error } = await sb.from('stock_traslados').insert({
-      sku: s.sku, descripcion: s.descripcion || '', cantidad: s.cantidad_sugerida,
-      local_origen: s.local_origen,
-      solicitante_email: quien, solicitante_empleado_id: empId, solicitante_nombre: nombre,
-    }).select('id').single();
-    if (error) throw error;
-    await sb.from('stock_redistribucion').update({
-      estado: 'usada', traslado_id: fila.id, resuelto_por: nombre || quien, resuelto_at: new Date().toISOString(),
-    }).eq('id', id);
-    await sb.functions.invoke('enviar-push', {
-      body: {
-        local_todos: s.local_origen, app: 'stock',
-        title: '🔁 Pedido de traslado (redistribución)',
-        body: `¿Tienen ${s.cantidad_sugerida} × ${s.sku}${s.descripcion ? ' (' + s.descripcion + ')' : ''} para apartar?${nombre ? ' Pide ' + nombre : ''}`,
-        tag: 'tras-' + fila.id,
-        url: 'https://claudiaadornosrl-prog.github.io/stock-adorno/?traslado=' + fila.id,
-      }
-    });
-    toast('📣 Traslado pedido a ' + (LOCAL_LABEL[s.local_origen] || s.local_origen));
-    cargarRedistribucion();
-  } catch (e) { toast('No pude pedir el traslado: ' + (e.message || e)); }
+  trasladoActual = { sku: s.sku, local: s.local_origen, desc: s.descripcion || '', sugerenciaId: s.id };
+  document.getElementById('tras-titulo').textContent = '🔁 Pedir a ' + (LOCAL_LABEL[s.local_origen] || s.local_origen);
+  document.getElementById('tras-desc').textContent = s.sku + (s.descripcion ? ' · ' + s.descripcion : '')
+    + ` — tienen ${s.stock_origen}, sugerido ${s.cantidad_sugerida}`;
+  document.getElementById('tras-cant').value = s.cantidad_sugerida;
+  document.getElementById('tras-modal-bg').style.display = 'flex';
 }
 
 async function ignorarSugerencia(id) {
@@ -1828,6 +1817,36 @@ document.getElementById('btn-install').addEventListener('click', async () => {
 
 // Estado inicial con búsquedas recientes (al final: ya está todo definido)
 mostrarVacio();
+</script>
+<script>
+// ⇪ Aviso de Bloq Mayús en campos de contraseña (agregado 14-ago-2026)
+(function () {
+  function toggleAviso(input, on) {
+    var el = input.nextElementSibling;
+    var esAviso = el && el.classList && el.classList.contains('caps-aviso');
+    if (on && !esAviso) {
+      el = document.createElement('div');
+      el.className = 'caps-aviso';
+      el.textContent = '\u21ea May\u00fasculas activadas';
+      el.style.cssText = 'color:#b45309;font-size:12px;font-weight:600;margin-top:4px;';
+      input.insertAdjacentElement('afterend', el);
+    } else if (!on && esAviso) {
+      el.remove();
+    }
+  }
+  function handler(e) {
+    var t = e.target;
+    if (t && t.type === 'password' && typeof e.getModifierState === 'function') {
+      toggleAviso(t, e.getModifierState('CapsLock'));
+    }
+  }
+  document.addEventListener('keydown', handler, true);
+  document.addEventListener('keyup', handler, true);
+  document.addEventListener('focusout', function (e) {
+    var t = e.target;
+    if (t && t.type === 'password') toggleAviso(t, false);
+  }, true);
+})();
 </script>
 </body>
 </html>
