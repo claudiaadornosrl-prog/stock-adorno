@@ -212,7 +212,7 @@ tr.drag-over { border-top: 3px solid var(--primary); }
       <div class="listas-menu" id="listas-menu"></div>
     </div>
     <button class="htab" id="tab-redis" onclick="verTab('redis')" title="Redistribución entre sucursales" aria-label="Redistribución" style="display:none;">🔄</button>
-    <button class="htab" id="tab-traslados" onclick="verTab('traslados')" title="Historial de pedidos de traslado" aria-label="Traslados">🔁</button>
+    <button class="htab" id="tab-traslados" onclick="verTab('traslados')" title="Historial de pedidos de traslado" aria-label="Traslados">📨</button>
   </div>
 </div>
 
@@ -1660,7 +1660,7 @@ function renderHistorialTraslados() {
   };
   cont.innerHTML = `
     <div style="margin-bottom:10px;">
-      <div style="font-weight:800;font-size:17px;">🔁 Pedidos de traslado</div>
+      <div style="font-weight:800;font-size:17px;">📨 Pedidos de traslado</div>
       <div style="font-size:12px;color:#64748b;">Últimos 30 días — buscá antes de pedir, capaz ya está pedido. Tocá un pendiente para responderlo.</div>
     </div>
     <div style="display:flex;gap:8px;margin-bottom:10px;">
