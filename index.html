@@ -212,10 +212,12 @@ tr.drag-over { border-top: 3px solid var(--primary); }
       <div class="listas-menu" id="listas-menu"></div>
     </div>
     <button class="htab" id="tab-redis" onclick="verTab('redis')" title="Redistribución entre sucursales" aria-label="Redistribución" style="display:none;">🔄</button>
+    <button class="htab" id="tab-traslados" onclick="verTab('traslados')" title="Historial de pedidos de traslado" aria-label="Traslados">🔁</button>
   </div>
 </div>
 
 <div id="view-redis" style="display:none;padding:12px;max-width:760px;margin:0 auto;"></div>
+<div id="view-traslados" style="display:none;padding:12px;max-width:760px;margin:0 auto;"></div>
 
 <div id="view-stock">
 <div class="search-wrap">
@@ -501,12 +503,15 @@ function verTab(t) {
   document.getElementById('view-stock').style.display = t === 'stock' ? '' : 'none';
   document.getElementById('view-espalma').style.display = t === 'espalma' ? '' : 'none';
   document.getElementById('view-redis').style.display = t === 'redis' ? '' : 'none';
+  document.getElementById('view-traslados').style.display = t === 'traslados' ? '' : 'none';
   document.getElementById('tab-stock').classList.toggle('active', t === 'stock');
   document.getElementById('tab-espalma').classList.toggle('active', t === 'espalma');
   document.getElementById('tab-redis').classList.toggle('active', t === 'redis');
+  document.getElementById('tab-traslados').classList.toggle('active', t === 'traslados');
   if (t === 'espalma') renderListasChips();
   if (t === 'espalma' && !espCargado) { espCargado = true; cargarEspalma(); }
   if (t === 'redis') cargarRedistribucion();
+  if (t === 'traslados') cargarHistorialTraslados();
 }
 
 // ═══ Listas (Espalma / Ropa de cama / Alf. baño / Alfombras) ═══
@@ -1600,6 +1605,79 @@ async function ignorarSugerencia(id) {
     toast('Sugerencia ignorada');
     cargarRedistribucion();
   } catch (e) { toast('Error: ' + (e.message || e)); }
+}
+
+// ═══ 🔁 Historial de pedidos de traslado (14-ago) ═══
+let _trasHist = [];
+let _trasHistFiltro = '';
+
+const TRAS_ESTADO_CFG = {
+  pendiente: { label: '⏳ Pendiente',  color: '#b45309', bg: '#fef3c7' },
+  revisando: { label: '👀 Revisando',  color: '#1d4ed8', bg: '#dbeafe' },
+  apartado:  { label: '✅ Apartado',   color: '#166534', bg: '#dcfce7' },
+  sin_stock: { label: '❌ Sin stock',  color: '#b91c1c', bg: '#fee2e2' },
+};
+
+async function cargarHistorialTraslados() {
+  const cont = document.getElementById('view-traslados');
+  cont.innerHTML = '<div class="empty"><span class="spinner"></span></div>';
+  try {
+    const desde = new Date(Date.now() - 90 * 86400000).toISOString();
+    const { data, error } = await sb.from('stock_traslados')
+      .select('*').gte('created_at', desde)
+      .order('created_at', { ascending: false }).limit(300);
+    if (error) throw error;
+    _trasHist = data || [];
+    renderHistorialTraslados();
+  } catch (e) {
+    cont.innerHTML = `<div class="empty">Error: ${escHtml(e.message || e)}</div>`;
+  }
+}
+
+function renderHistorialTraslados() {
+  const cont = document.getElementById('view-traslados');
+  const t = _trasHistFiltro.trim().toLowerCase();
+  const lista = !t ? _trasHist : _trasHist.filter(x =>
+    (x.sku || '').toLowerCase().includes(t) ||
+    (x.descripcion || '').toLowerCase().includes(t) ||
+    (x.solicitante_nombre || '').toLowerCase().includes(t));
+  const fila = (x) => {
+    const cfg = TRAS_ESTADO_CFG[x.estado] || { label: x.estado, color: '#475569', bg: '#f8fafc' };
+    const f = new Date(x.created_at).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' });
+    const accionable = x.estado === 'pendiente' || x.estado === 'revisando';
+    const detalleEstado = x.estado === 'apartado' ? (x.respondido_por ? ' por ' + x.respondido_por : '')
+      : x.estado === 'revisando' ? (x.revisando_por ? ' ' + x.revisando_por : '')
+      : x.estado === 'sin_stock' ? (x.respondido_por ? ' (' + x.respondido_por + ')' : '') : '';
+    return `<div onclick="${accionable ? `responderDesdeHistorial(${x.id})` : ''}"
+      style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid #f1f5f9;background:#fff;${accionable ? 'cursor:pointer;' : ''}">
+      <div style="min-width:0;">
+        <div style="font-weight:700;font-size:14px;">${escHtml(x.sku)} <span style="font-weight:400;color:#94a3b8;">× ${x.cantidad}</span></div>
+        <div style="font-size:12px;color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(x.descripcion || '')}</div>
+        <div style="font-size:12px;color:#64748b;margin-top:2px;">${f} · pide <b>${escHtml(x.solicitante_nombre || x.solicitante_email || '¿?')}</b> a <b>${LOCAL_LABEL[x.local_origen] || x.local_origen}</b></div>
+      </div>
+      <span style="flex-shrink:0;background:${cfg.bg};color:${cfg.color};padding:3px 10px;border-radius:999px;font-size:11px;font-weight:700;">${cfg.label}${escHtml(detalleEstado)}</span>
+    </div>`;
+  };
+  cont.innerHTML = `
+    <div style="margin-bottom:10px;">
+      <div style="font-weight:800;font-size:17px;">🔁 Pedidos de traslado</div>
+      <div style="font-size:12px;color:#64748b;">Últimos 90 días — buscá antes de pedir, capaz ya está pedido. Tocá un pendiente para responderlo.</div>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:10px;">
+      <input type="search" placeholder="🔎 SKU, descripción o quién pidió…" value="${escHtml(_trasHistFiltro)}"
+             oninput="_trasHistFiltro=this.value;renderHistorialTraslados();"
+             style="flex:1;padding:9px 12px;border:1px solid #e2e8f0;border-radius:10px;font-size:14px;">
+      <button onclick="cargarHistorialTraslados()" title="Refrescar" style="background:none;border:1px solid #e2e8f0;border-radius:10px;padding:0 12px;cursor:pointer;font-size:15px;">↻</button>
+    </div>
+    ${lista.length
+      ? `<div style="border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">${lista.map(fila).join('')}</div>`
+      : '<div class="empty">No hay pedidos' + (t ? ' que coincidan con la búsqueda' : ' en los últimos 90 días') + '.</div>'}`;
+}
+
+async function responderDesdeHistorial(id) {
+  const x = _trasHist.find(y => y.id === id);
+  if (!x) return;
+  abrirModalRespuesta(x, await nombrePropio());
 }
 
 async function chequearTrasladoURL() {
