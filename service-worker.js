@@ -1,6 +1,7 @@
 // Service Worker — Stock Adorno
-const CACHE_VERSION = 'stock-adorno-v54-icono-sobre';
-const CACHE_ASSETS = ['./', './index.html', './manifest.webmanifest', './favicon.svg'];
+const CACHE_VERSION = 'stock-adorno-v55-manual';
+const CACHE_ASSETS = ['./', './index.html',
+  './manual.js', './manifest.webmanifest', './favicon.svg'];
 
 self.addEventListener('install', e => {
   e.waitUntil(
