@@ -72,7 +72,7 @@ function _manualSecciones() {
       icon: '⋮', titulo: 'Menú de opciones',
       desc: 'El botón ⋮ de arriba a la derecha agrupa los ajustes.',
       pasos: [
-        '🔔 Notificaciones: activalas para enterarte de traslados y avisos. En iPhone requiere la app instalada en pantalla de inicio.',
+        '🔔 Notificaciones: activalas para enterarte de traslados y avisos. En iPhone requiere la app instalada en pantalla de inicio. Si el teléfono las apaga solo (maña de iOS), la app las reactiva automáticamente al abrirla.',
         '🎯 Solo resultado exacto / 🚫 Ocultar sin stock / 📋 Vista tabla: filtros de búsqueda a gusto.',
         '⬇ Instalar la app: para tenerla como aplicación en el celu.',
       ],
