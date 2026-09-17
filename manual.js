@@ -67,6 +67,7 @@ function _manualSecciones() {
         'Al local le llega una notificación; la respuesta pasa por: pendiente → revisando → apartado o sin stock.',
         'Cuando respondan, te llega el aviso a vos con el resultado.',
         'Antes de pedir, mirá el 📨 historial — capaz otra compañera ya lo pidió.',
+        'Si te arrepentís, lo anulás desde el 📨 historial con el 🗑 (solo los pedidos de tu local).',
       ],
     },
     {
@@ -76,6 +77,8 @@ function _manualSecciones() {
         'Pestaña 📨 → ves cada solicitud con su estado y quién la hizo.',
         'Podés buscar por artículo o local.',
         'Si una solicitud está pendiente y es para tu local, tocála para responderla desde ahí.',
+        '🗑 Anular: en los pedidos que hizo TU local aparece el tacho. Anula el pedido y le avisa al otro local — importante si ya lo estaban buscando. No se borra: queda como 🚫 Anulado, con quién lo anuló y por qué.',
+        'Los pedidos del otro local no tienen tacho: cada local anula los propios.',
       ],
     },
     {

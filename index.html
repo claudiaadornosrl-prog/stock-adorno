@@ -1542,6 +1542,7 @@ async function enviarTraslado() {
     const { data: fila, error } = await sb.from('stock_traslados').insert({
       sku, descripcion: desc, cantidad: cant, local_origen: local,
       solicitante_email: quien, solicitante_empleado_id: empId, solicitante_nombre: nombre,
+      local_solicitante: miLocalStock,   // es lo que decide quién puede anularlo
     }).select('id').single();
     if (error) throw error;
     const cuerpo = `¿Tienen ${cant} × ${sku}${desc ? ' (' + desc + ')' : ''} para apartar?${nombre ? ' Pide ' + nombre : ''}`;
@@ -1690,6 +1691,7 @@ const TRAS_ESTADO_CFG = {
   revisando: { label: '👀 Revisando',  color: '#1d4ed8', bg: '#dbeafe' },
   apartado:  { label: '✅ Apartado',   color: '#166534', bg: '#dcfce7' },
   sin_stock: { label: '❌ Sin stock',  color: '#b91c1c', bg: '#fee2e2' },
+  anulado:   { label: '🚫 Anulado',    color: '#475569', bg: '#e2e8f0' },
 };
 
 async function cargarHistorialTraslados() {
@@ -1719,9 +1721,14 @@ function renderHistorialTraslados() {
     const cfg = TRAS_ESTADO_CFG[x.estado] || { label: x.estado, color: '#475569', bg: '#f8fafc' };
     const f = new Date(x.created_at).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' });
     const accionable = x.estado === 'pendiente' || x.estado === 'revisando';
+    // Anular: SOLO los pedidos que hizo MI local (admin puede con todos). La
+    // decisión real la toma la RPC — esto es nada más para no mostrar un botón
+    // que va a rebotar.
+    const puedoAnular = accionable && (esAdmin || x.local_solicitante === miLocalStock);
     const detalleEstado = x.estado === 'apartado' ? (x.respondido_por ? ' por ' + x.respondido_por : '')
       : x.estado === 'revisando' ? (x.revisando_por ? ' ' + x.revisando_por : '')
-      : x.estado === 'sin_stock' ? (x.respondido_por ? ' (' + x.respondido_por + ')' : '') : '';
+      : x.estado === 'sin_stock' ? (x.respondido_por ? ' (' + x.respondido_por + ')' : '')
+      : x.estado === 'anulado' ? (x.anulado_por ? ' por ' + x.anulado_por.split('@')[0] : '') : '';
     return `<div onclick="${accionable ? `responderDesdeHistorial(${x.id})` : ''}"
       style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid #f1f5f9;background:#fff;${accionable ? 'cursor:pointer;' : ''}">
       <div style="min-width:0;">
@@ -1729,7 +1736,11 @@ function renderHistorialTraslados() {
         <div style="font-size:12px;color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(x.descripcion || '')}</div>
         <div style="font-size:12px;color:#64748b;margin-top:2px;">${f} · pide <b>${escHtml(x.solicitante_nombre || x.solicitante_email || '¿?')}</b> a <b>${LOCAL_LABEL[x.local_origen] || x.local_origen}</b></div>
       </div>
-      <span style="flex-shrink:0;background:${cfg.bg};color:${cfg.color};padding:3px 10px;border-radius:999px;font-size:11px;font-weight:700;">${cfg.label}${escHtml(detalleEstado)}</span>
+      <div style="flex-shrink:0;display:flex;align-items:center;gap:6px;">
+        <span style="background:${cfg.bg};color:${cfg.color};padding:3px 10px;border-radius:999px;font-size:11px;font-weight:700;">${cfg.label}${escHtml(detalleEstado)}</span>
+        ${puedoAnular ? `<button onclick="event.stopPropagation();anularTraslado(${x.id});"
+          title="Anular este pedido" style="background:none;border:1px solid #e2e8f0;border-radius:8px;padding:4px 8px;cursor:pointer;font-size:13px;line-height:1;">🗑</button>` : ''}
+      </div>
     </div>`;
   };
   cont.innerHTML = `
@@ -1748,6 +1759,36 @@ function renderHistorialTraslados() {
       : '<div class="empty">No hay pedidos' + (t ? ' que coincidan con la búsqueda' : ' en los últimos 30 días') + '.</div>'}`;
 }
 
+// Anula un pedido propio. No borra la fila: la marca 'anulado' y le avisa al
+// local al que se le pidió — si ya lo estaban buscando, que dejen de buscarlo.
+async function anularTraslado(id) {
+  const x = _trasHist.find(y => y.id === id);
+  if (!x) return;
+  const aviso = x.estado === 'revisando'
+    ? `\n\n⚠ ${LOCAL_LABEL[x.local_origen] || x.local_origen} YA lo está buscando${x.revisando_por ? ' (' + x.revisando_por + ')' : ''}. Les va a llegar el aviso.`
+    : '';
+  if (!confirm(`¿Anular el pedido de ${x.cantidad} × ${x.sku}?${aviso}`)) return;
+  const motivo = prompt('¿Por qué se anula? (opcional — le llega al otro local)') || '';
+  try {
+    const { data, error } = await sb.rpc('stock_anular_traslado', { p_id: id, p_motivo: motivo });
+    if (error) throw error;
+    const quien = await nombrePropio();
+    await sb.functions.invoke('enviar-push', {
+      body: {
+        local_todos: data.local_origen,
+        app: 'stock',
+        title: data.estaba_revisando ? '🚫 Anularon el pedido que estabas buscando' : '🚫 Pedido anulado',
+        body: `${data.cantidad} × ${data.sku} — lo anuló ${quien || 'el otro local'}${motivo ? ': ' + motivo : ''}`,
+        tag: 'tras-' + id,
+      }
+    });
+    toast('🚫 Pedido anulado — le avisamos a ' + (LOCAL_LABEL[data.local_origen] || data.local_origen));
+    cargarHistorialTraslados();
+  } catch (e) {
+    toast('No pude anularlo: ' + (e.message || e));
+  }
+}
+
 async function responderDesdeHistorial(id) {
   const x = _trasHist.find(y => y.id === id);
   if (!x) return;
@@ -1761,6 +1802,10 @@ async function chequearTrasladoURL() {
   try {
     const { data: t, error } = await sb.from('stock_traslados').select('*').eq('id', id).single();
     if (error || !t) throw new Error('No encontré el pedido de traslado.');
+    if (t.estado === 'anulado') {
+      toast(`Este pedido fue anulado por quien lo pidió${t.anulado_motivo ? ': ' + t.anulado_motivo : ''}`);
+      return;
+    }
     if (t.estado === 'apartado' || t.estado === 'sin_stock') {
       toast(`Este pedido ya fue respondido (${t.estado === 'apartado' ? '✅ guardado' : '❌ sin stock'}${t.respondido_por ? ' por ' + t.respondido_por : ''})`);
       return;
@@ -2000,7 +2045,7 @@ mostrarVacio();
   }, true);
 })();
 </script>
-<script src="manual.js?v=3"></script>
+<script src="manual.js?v=4"></script>
 <script>
 // (24-ago) Blindaje iOS: re-suscripcion automatica de push (ver regla en
 // las otras apps). Solo si el permiso esta concedido y esta usuaria ya
