@@ -2,6 +2,12 @@
 <html lang="es">
 <head>
 <script>
+// 🚨 FECHA DE HOY EN HORA ARGENTINA (UTC−3).
+// `new Date().toISOString()` devuelve el día SIGUIENTE a partir de las 21:00,
+// así que todo lo que se guardaba o comparaba con "hoy" después de esa hora
+// quedaba corrido un día (fecha_baja, fecha de pago de vacaciones, ajustes,
+// faltas "hasta hoy"...). Ventas ya usaba esta forma; el resto no.
+const hoyISO = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date());
 // ═══ SESIÓN COMPARTIDA ENTRE MÓDULOS · SSO Adorno (10-sep-2026) ═══
 // Todos los módulos viven en el mismo origen (claudiaadornosrl-prog.github.io),
 // así que pueden compartir la sesión: se guarda bajo la clave 'adorno-auth' en
@@ -1924,7 +1930,7 @@ async function verificarEnVivo(sku) {
   const btn = document.getElementById('live-' + cssId(sku));
   if (btn) { btn.disabled = true; btn.textContent = '⏳'; }
 
-  const hoy = new Date().toISOString().split('T')[0];
+  const hoy = hoyISO();
   const jobs = LOCALES.map(l => ({
     local: l, tipo: 'stock_sku', fecha: hoy, parametro: sku,
     estado: 'pendiente', solicitado_por: 'stock_pwa',
