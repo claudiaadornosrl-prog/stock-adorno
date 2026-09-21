@@ -1161,11 +1161,19 @@ function render(articulos, q) {
     const qUp2 = q.toUpperCase();
     articulos = articulos.filter(a => a.sku.toUpperCase() === qUp2);
   }
+  let ocultos = 0;
   if (ocultarSinStock) {
+    const antes = articulos.length;
     articulos = articulos.filter(a => Object.values(a.stocks).some(st => st > 0));
+    ocultos = antes - articulos.length;
   }
   if (!articulos.length) {
-    cont.innerHTML = `<div class="empty"><div class="big">🤷</div>No encontré nada con «${escHtml(q)}».</div>`;
+    // 🚨 "No encontré nada" cuando el artículo EXISTE pero el filtro lo escondió
+    // hacía pensar que faltaba el artículo (o su foto). Decir la verdad.
+    cont.innerHTML = ocultos
+      ? `<div class="empty"><div class="big">🚫</div>${ocultos === 1 ? 'Hay 1 artículo' : 'Hay ' + ocultos + ' artículos'} con «${escHtml(q)}» pero <b>sin stock en ningún local</b>, y tenés activado "Ocultar sin stock".<br>
+         <button onclick="toggleSinStock()" style="margin-top:12px;padding:9px 16px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;cursor:pointer;font-size:14px;">👁 Mostrar igual</button></div>`
+      : `<div class="empty"><div class="big">🤷</div>No encontré nada con «${escHtml(q)}».</div>`;
     return;
   }
   // Coincidencia exacta de SKU primero, después alfabético por descripción

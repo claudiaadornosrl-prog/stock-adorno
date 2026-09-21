@@ -1,5 +1,5 @@
 // Service Worker — Stock Adorno
-const CACHE_VERSION = 'stock-adorno-v61-cancelar-apartado';
+const CACHE_VERSION = 'stock-adorno-v62-aviso-filtro-sin-stock';
 const CACHE_ASSETS = ['./', './index.html',
   './manual.js', './manifest.webmanifest', './favicon.svg'];
 
