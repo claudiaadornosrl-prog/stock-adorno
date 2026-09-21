@@ -68,6 +68,7 @@ function _manualSecciones() {
         'Cuando respondan, te llega el aviso a vos con el resultado.',
         'Antes de pedir, mirá el 📨 historial — capaz otra compañera ya lo pidió.',
         'Si te arrepentís, lo anulás desde el 📨 historial con el 🗑 (solo los pedidos de tu local).',
+        '↩ Si el otro local YA lo apartó y el cliente después no lo quiso, no alcanza con anular: hay mercadería separada en otro local. Tocás "↩ Cancelar" en el 📨 historial, ponés el motivo, y al otro local le llega el aviso para que la vuelva a la venta. El pedido queda como "Piden cancelar" hasta que ellos toquen "✔ Liberado" — recién ahí te llega la confirmación y queda como Cancelado.',
       ],
     },
     {
@@ -79,6 +80,7 @@ function _manualSecciones() {
         'Si una solicitud está pendiente y es para tu local, tocála para responderla desde ahí.',
         '🗑 Anular: en los pedidos que hizo TU local aparece el tacho. Anula el pedido y le avisa al otro local — importante si ya lo estaban buscando. No se borra: queda como 🚫 Anulado, con quién lo anuló y por qué.',
         'Los pedidos del otro local no tienen tacho: cada local anula los propios.',
+        '↩ "Piden cancelar": si vos habías apartado la mercadería y el otro local pide cancelar, te llega el aviso con el motivo. Volvés el artículo a la venta y tocás "✔ Liberado": eso confirma la cancelación y le avisa a quien lo había pedido. Hasta que no confirmes, el pedido sigue vivo — así nadie se queda con mercadería apartada de más ni la vende dos veces.',
       ],
     },
     {

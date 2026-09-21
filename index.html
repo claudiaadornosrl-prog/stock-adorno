@@ -1698,6 +1698,8 @@ const TRAS_ESTADO_CFG = {
   apartado:  { label: '✅ Apartado',   color: '#166534', bg: '#dcfce7' },
   sin_stock: { label: '❌ Sin stock',  color: '#b91c1c', bg: '#fee2e2' },
   anulado:   { label: '🚫 Anulado',    color: '#475569', bg: '#e2e8f0' },
+  cancelacion_pedida: { label: '↩ Piden cancelar', color: '#9a3412', bg: '#ffedd5' },
+  cancelado: { label: '↩ Cancelado',   color: '#475569', bg: '#e2e8f0' },
 };
 
 async function cargarHistorialTraslados() {
@@ -1731,7 +1733,13 @@ function renderHistorialTraslados() {
     // decisión real la toma la RPC — esto es nada más para no mostrar un botón
     // que va a rebotar.
     const puedoAnular = accionable && (esAdmin || x.local_solicitante === miLocalStock);
+    // Ya apartado por el otro local → el que pidió puede PEDIR la cancelación
+    // (el cliente no lo quiso); y el local que lo apartó CONFIRMA que lo liberó.
+    const puedoPedirCancel = x.estado === 'apartado' && (esAdmin || x.local_solicitante === miLocalStock);
+    const puedoLiberar     = x.estado === 'cancelacion_pedida' && (esAdmin || x.local_origen === miLocalStock);
     const detalleEstado = x.estado === 'apartado' ? (x.respondido_por ? ' por ' + x.respondido_por : '')
+      : x.estado === 'cancelacion_pedida' ? (x.cancel_motivo ? ' · ' + x.cancel_motivo : '')
+      : x.estado === 'cancelado' ? (x.cancel_confirmada_por ? ' · liberó ' + x.cancel_confirmada_por.split('@')[0] : '')
       : x.estado === 'revisando' ? (x.revisando_por ? ' ' + x.revisando_por : '')
       : x.estado === 'sin_stock' ? (x.respondido_por ? ' (' + x.respondido_por + ')' : '')
       : x.estado === 'anulado' ? (x.anulado_por ? ' por ' + x.anulado_por.split('@')[0] : '') : '';
@@ -1746,6 +1754,12 @@ function renderHistorialTraslados() {
         <span style="background:${cfg.bg};color:${cfg.color};padding:3px 10px;border-radius:999px;font-size:11px;font-weight:700;">${cfg.label}${escHtml(detalleEstado)}</span>
         ${puedoAnular ? `<button onclick="event.stopPropagation();anularTraslado(${x.id});"
           title="Anular este pedido" style="background:none;border:1px solid #e2e8f0;border-radius:8px;padding:4px 8px;cursor:pointer;font-size:13px;line-height:1;">🗑</button>` : ''}
+        ${puedoPedirCancel ? `<button onclick="event.stopPropagation();pedirCancelacionTraslado(${x.id});"
+          title="El cliente no lo quiso: pedirle a ${LOCAL_LABEL[x.local_origen] || x.local_origen} que lo libere"
+          style="background:#fff7ed;border:1px solid #fdba74;color:#9a3412;border-radius:8px;padding:4px 8px;cursor:pointer;font-size:12px;font-weight:700;line-height:1.2;">↩ Cancelar</button>` : ''}
+        ${puedoLiberar ? `<button onclick="event.stopPropagation();confirmarCancelacionTraslado(${x.id});"
+          title="Confirmar que volviste la mercadería a la venta"
+          style="background:#16a34a;border:none;color:#fff;border-radius:8px;padding:5px 9px;cursor:pointer;font-size:12px;font-weight:700;line-height:1.2;">✔ Liberado</button>` : ''}
       </div>
     </div>`;
   };
@@ -1795,6 +1809,63 @@ async function anularTraslado(id) {
   }
 }
 
+// El pedido YA fue apartado por el otro local y el cliente no lo quiso. No se
+// puede anular a secas: hay mercadería físicamente separada en otro local. El
+// solicitante PIDE la cancelación (con motivo, que le llega al otro local) y
+// el pedido queda vivo en 'cancelacion_pedida' hasta que el otro local
+// confirme que la volvió a poner en venta. La puerta es la RPC.
+async function pedirCancelacionTraslado(id) {
+  const x = _trasHist.find(y => y.id === id);
+  if (!x) return;
+  const motivo = prompt(`${LOCAL_LABEL[x.local_origen] || x.local_origen} ya apartó ${x.cantidad} × ${x.sku}${x.respondido_por ? ' (' + x.respondido_por + ')' : ''}.\n\n¿Por qué se cancela? (obligatorio — le llega a quien lo apartó)`, 'El cliente no lo quiso');
+  if (motivo === null) return;
+  try {
+    const { data, error } = await sb.rpc('stock_traslado_pedir_cancelacion', { p_id: id, p_motivo: motivo });
+    if (error) throw error;
+    const quien = await nombrePropio();
+    await sb.functions.invoke('enviar-push', {
+      body: {
+        local_todos: data.local_origen,
+        app: 'stock',
+        title: '↩ Piden cancelar un traslado que apartaste',
+        body: `${data.cantidad} × ${data.sku} — ${quien || 'el otro local'}: ${motivo}. Volvelo a la venta y tocá "Liberado".`,
+        tag: 'tras-' + id,
+        url: 'https://claudiaadornosrl-prog.github.io/stock-adorno/?traslado=' + id,
+      }
+    });
+    toast('↩ Pedido de cancelación enviado a ' + (LOCAL_LABEL[data.local_origen] || data.local_origen) + ' — queda pendiente hasta que confirmen que lo liberaron');
+    cargarHistorialTraslados();
+  } catch (e) {
+    toast('No pude pedir la cancelación: ' + (e.message || e));
+  }
+}
+
+// El local que había apartado confirma que volvió la mercadería a la venta.
+async function confirmarCancelacionTraslado(id) {
+  const x = _trasHist.find(y => y.id === id);
+  if (!x) return;
+  if (!confirm(`¿Ya volviste a la venta ${x.cantidad} × ${x.sku}?${x.cancel_motivo ? '\n\nMotivo de la cancelación: ' + x.cancel_motivo : ''}`)) return;
+  try {
+    const { data, error } = await sb.rpc('stock_traslado_confirmar_cancelacion', { p_id: id });
+    if (error) throw error;
+    const quien = await nombrePropio();
+    const body = {
+      app: 'stock',
+      title: '✔ Traslado cancelado — mercadería liberada',
+      body: `${data.cantidad} × ${data.sku} volvió a la venta${quien ? ' · confirmó ' + quien : ''}`,
+      tag: 'tras-' + id,
+    };
+    // Al que pidió si tiene legajo; si fue el usuario genérico del local, a todo el local.
+    if (data.solicitante_empleado_id) body.empleado_id = data.solicitante_empleado_id;
+    else if (data.local_solicitante) body.local_todos = data.local_solicitante;
+    await sb.functions.invoke('enviar-push', { body });
+    toast('✔ Cancelación confirmada — le avisamos a quien lo había pedido');
+    cargarHistorialTraslados();
+  } catch (e) {
+    toast('No pude confirmar: ' + (e.message || e));
+  }
+}
+
 async function responderDesdeHistorial(id) {
   const x = _trasHist.find(y => y.id === id);
   if (!x) return;
@@ -1812,6 +1883,13 @@ async function chequearTrasladoURL() {
       toast(`Este pedido fue anulado por quien lo pidió${t.anulado_motivo ? ': ' + t.anulado_motivo : ''}`);
       return;
     }
+    if (t.estado === 'cancelacion_pedida') {
+      _trasHist = [t];
+      if (esAdmin || t.local_origen === miLocalStock) { confirmarCancelacionTraslado(t.id); }
+      else toast(`Piden cancelar este traslado${t.cancel_motivo ? ': ' + t.cancel_motivo : ''} — falta que ${LOCAL_LABEL[t.local_origen] || t.local_origen} confirme que lo liberó`);
+      return;
+    }
+    if (t.estado === 'cancelado') { toast('Este traslado fue cancelado y la mercadería ya se liberó.'); return; }
     if (t.estado === 'apartado' || t.estado === 'sin_stock') {
       toast(`Este pedido ya fue respondido (${t.estado === 'apartado' ? '✅ guardado' : '❌ sin stock'}${t.respondido_por ? ' por ' + t.respondido_por : ''})`);
       return;
@@ -2051,7 +2129,7 @@ mostrarVacio();
   }, true);
 })();
 </script>
-<script src="manual.js?v=4"></script>
+<script src="manual.js?v=5"></script>
 <script>
 // (24-ago) Blindaje iOS: re-suscripcion automatica de push (ver regla en
 // las otras apps). Solo si el permiso esta concedido y esta usuaria ya
