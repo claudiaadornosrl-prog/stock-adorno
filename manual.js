@@ -102,7 +102,9 @@ function _manualSecciones() {
         'Los lunes a la mañana te llega una notificación con las sugerencias nuevas.',
         'En la pestaña 🔄 ves cada sugerencia: qué artículo, cuánto sobra en el origen y cuánto falta en destino.',
         '"Pedir traslado" arma la solicitud (podés cambiar la cantidad antes de enviar).',
-        '"Ignorar" la saca PARA SIEMPRE — usalo cuando ese local no trabaja esa línea. No vuelve a aparecer.',
+        '"🚫 No trabajamos este producto": tu local no trabaja ese artículo → no se te vuelve a sugerir en los próximos listados.',
+        '"Ahora no": la saca solo por esta semana; el lunes que viene puede volver a aparecer.',
+        'Abajo de todo, en "🚫 Productos que no trabajamos", está la lista; si empiezan a trabajar uno, "↩ Volver a sugerir".',
         'Son sugerencias: el sistema nunca mueve stock solo, siempre decidís vos.',
       ],
     });

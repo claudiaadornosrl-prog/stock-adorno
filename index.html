@@ -1614,6 +1614,7 @@ function abrirModalRespuesta(t, miNombre) {
 
 // ═══ 🔄 Redistribución entre sucursales (sugerencias semanales) ═══
 let _redisCache = [];
+let _noTrabaja = [];   // (25-sep) productos que un local no trabaja → no se le sugieren
 
 async function cargarRedistribucion() {
   const cont = document.getElementById('view-redis');
@@ -1624,6 +1625,8 @@ async function cargarRedistribucion() {
       .order('stock_origen', { ascending: false }).limit(500);
     if (error) throw error;
     _redisCache = data || [];
+    const nt = await sb.from('stock_no_trabaja').select('*').order('marcado_at', { ascending: false });
+    _noTrabaja = nt.data || [];
     renderRedistribucion();
   } catch (e) {
     cont.innerHTML = `<div class="empty">Error: ${escHtml(e.message || e)}</div>`;
@@ -1647,7 +1650,8 @@ function renderRedistribucion() {
       </div>
       ${accionable ? `<div style="display:flex;flex-direction:column;gap:5px;flex-shrink:0;">
         <button onclick="usarSugerencia(${s.id})" style="background:#0f6e56;color:#fff;border:none;border-radius:8px;padding:7px 12px;font-size:12px;font-weight:700;cursor:pointer;">🔁 Pedir traslado</button>
-        <button onclick="ignorarSugerencia(${s.id})" style="background:none;border:1px solid #e2e8f0;border-radius:8px;padding:5px 12px;font-size:12px;color:#64748b;cursor:pointer;">Ignorar</button>
+        <button onclick="redisNoTrabaja(${s.id})" title="Este local no trabaja este producto: no se vuelve a sugerir" style="background:#fff;border:1px solid #fecaca;border-radius:8px;padding:5px 10px;font-size:12px;color:#b91c1c;cursor:pointer;">🚫 No trabajamos este producto</button>
+        <button onclick="redisAhoraNo(${s.id})" title="Solo por esta semana: el lunes que viene puede volver a aparecer" style="background:none;border:1px solid #e2e8f0;border-radius:8px;padding:5px 12px;font-size:12px;color:#64748b;cursor:pointer;">Ahora no</button>
       </div>` : ''}
     </div>`;
   const seccion = (titulo, items, accionable) => !items.length ? '' : `
@@ -1669,7 +1673,27 @@ function renderRedistribucion() {
       <div style="font-size:12px;color:#64748b;">Sugerencias generadas ${gen ? 'el ' + gen : ''} — se renuevan los lunes 10:00.
         Al pedir un traslado se usa el circuito de siempre (le llega push al local de origen).</div>
     </div>
-    ${cuerpo || '<div class="empty">🎉 No hay sugerencias pendientes.</div>'}`;
+    ${cuerpo || '<div class="empty">🎉 No hay sugerencias pendientes.</div>'}
+    ${_htmlNoTrabaja()}`;
+}
+
+function _htmlNoTrabaja() {
+  const lista = esAdmin ? _noTrabaja : _noTrabaja.filter(x => x.local === miLocalStock);
+  if (!lista.length) return '';
+  const filas = lista.map(x => `
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid #f1f5f9;background:#fff;">
+      <div style="min-width:0;">
+        <div style="font-weight:700;font-size:13px;">${escHtml(x.sku)}${esAdmin ? ` <span style="font-weight:500;color:#64748b;">· ${LOCAL_LABEL[x.local] || x.local}</span>` : ''}</div>
+        <div style="font-size:12px;color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(x.descripcion || '')}</div>
+        <div style="font-size:11px;color:#94a3b8;">${escHtml(x.marcado_por || '')}${x.marcado_at ? ' · ' + new Date(x.marcado_at).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : ''}${x.motivo ? ' · ' + escHtml(x.motivo) : ''}</div>
+      </div>
+      <button onclick="redisVolverASugerir(${_noTrabaja.indexOf(x)})" style="background:none;border:1px solid #e2e8f0;border-radius:8px;padding:5px 10px;font-size:12px;color:#0f6e56;cursor:pointer;white-space:nowrap;">↩ Volver a sugerir</button>
+    </div>`).join('');
+  return `<details style="margin-top:6px;">
+    <summary style="cursor:pointer;font-weight:700;font-size:13px;color:#475569;">🚫 Productos que no trabajamos ${esAdmin ? '' : 'en ' + (LOCAL_LABEL[miLocalStock] || miLocalStock)} <span style="color:#94a3b8;font-weight:500;">(${lista.length})</span></summary>
+    <div style="font-size:12px;color:#64748b;margin:6px 0;">No se sugieren en la redistribución de los lunes. Si el local empieza a trabajar uno, tocá "Volver a sugerir".</div>
+    <div style="border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">${filas}</div>
+  </details>`;
 }
 
 function usarSugerencia(id) {
@@ -1685,13 +1709,43 @@ function usarSugerencia(id) {
   document.getElementById('tras-modal-bg').style.display = 'flex';
 }
 
-async function ignorarSugerencia(id) {
+// (25-sep) Antes se llamaba ignorarSugerencia(id) y PISABA a la ignorarSugerencia(i) del
+// detector de modelos (dos function con el mismo nombre: gana la última) → el "✕ No va" de
+// modelos sin lista llamaba a esta. Por eso nombres propios.
+async function redisNoTrabaja(id) {
+  const s = _redisCache.find(x => x.id === id);
+  if (!s) return;
+  const local = LOCAL_LABEL[s.local_destino] || s.local_destino;
+  const motivo = prompt(`🚫 ${s.sku}${s.descripcion ? ' · ' + s.descripcion : ''}\n\n`
+    + `¿En ${local} no trabajan este producto?\nNo se va a volver a sugerir para ${local} en los próximos listados `
+    + `(se puede deshacer abajo, en "Productos que no trabajamos").\n\nMotivo (opcional):`, '');
+  if (motivo === null) return;
   try {
-    const nombre = await nombrePropio();
-    await sb.from('stock_redistribucion').update({
-      estado: 'ignorada', resuelto_por: nombre, resuelto_at: new Date().toISOString(),
-    }).eq('id', id);
-    toast('Sugerencia ignorada');
+    const { error } = await sb.rpc('stock_marcar_no_trabaja', { p_sku: s.sku, p_local: s.local_destino, p_motivo: motivo || null });
+    if (error) throw error;
+    toast('🚫 Listo — no se sugiere más para ' + local);
+    cargarRedistribucion();
+  } catch (e) { toast('No pude guardarlo: ' + (e.message || e)); }
+}
+
+async function redisAhoraNo(id) {
+  try {
+    const { error } = await sb.rpc('stock_descartar_sugerencia', { p_id: id });
+    if (error) throw error;
+    toast('Descartada por esta semana');
+    cargarRedistribucion();
+  } catch (e) { toast('Error: ' + (e.message || e)); }
+}
+
+async function redisVolverASugerir(i) {
+  const x = _noTrabaja[i];
+  if (!x) return;
+  const sku = x.sku, local = x.local;
+  if (!confirm(`¿${LOCAL_LABEL[local] || local} vuelve a trabajar ${sku}?\nSe va a poder sugerir de nuevo desde el lunes que viene.`)) return;
+  try {
+    const { error } = await sb.rpc('stock_quitar_no_trabaja', { p_sku: sku, p_local: local });
+    if (error) throw error;
+    toast('↩ Vuelve a sugerirse');
     cargarRedistribucion();
   } catch (e) { toast('Error: ' + (e.message || e)); }
 }
@@ -2137,7 +2191,7 @@ mostrarVacio();
   }, true);
 })();
 </script>
-<script src="manual.js?v=5"></script>
+<script src="manual.js?v=6"></script>
 <script>
 // (24-ago) Blindaje iOS: re-suscripcion automatica de push (ver regla en
 // las otras apps). Solo si el permiso esta concedido y esta usuaria ya
