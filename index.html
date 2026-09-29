@@ -432,8 +432,24 @@ const sb = window.supabase.createClient(SUPA_URL, SUPA_KEY, {
   var outOrig = sb.auth.signOut.bind(sb.auth);
   sb.auth.signOut = async function () {
     ADORNO_SSO.olvidarModulos();
-    return outOrig.apply(null, arguments);
+    // "Salir" cierra la sesión SOLO en este equipo (scope local). Con el
+    // default de Supabase (global) salir en una PC cerraba el mismo usuario
+    // en todas las demás, y la pantalla abierta seguía mandando pedidos sin
+    // sesión ("permission denied", caso Compras 28-sep).
+    window.__adornoSaliendo = true;
+    return outOrig(arguments[0] || { scope: 'local' });
   };
+  // Si la sesión se cae sola (vencida, revocada, o salieron en otra pestaña)
+  // avisar y volver al login en vez de dejar una pantalla que ya no guarda.
+  var _tuvoSesion = false;
+  sb.auth.onAuthStateChange(function (ev, s) {
+    if (s) { _tuvoSesion = true; return; }
+    if (ev === 'SIGNED_OUT' && _tuvoSesion && !window.__adornoSaliendo) {
+      _tuvoSesion = false;
+      alert('Tu sesión se cerró (venció o alguien salió con este usuario).\nVolvé a ingresar: lo que no guardaste hay que cargarlo de nuevo.');
+      location.reload();
+    }
+  });
 })('stock');
 
 
