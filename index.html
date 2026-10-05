@@ -405,11 +405,13 @@ tr.drag-over { border-top: 3px solid var(--primary); }
     </div>
     <button class="htab" id="tab-redis" onclick="verTab('redis')" title="Redistribución entre sucursales" aria-label="Redistribución" style="display:none;">🔄</button>
     <button class="htab" id="tab-traslados" onclick="verTab('traslados')" title="Historial de pedidos de traslado" aria-label="Traslados">📨</button>
+    <button class="htab" id="tab-inventario" onclick="verTab('inventario')" title="Inventario cíclico" aria-label="Inventario">📋</button>
   </div>
 </div>
 
 <div id="view-redis" style="display:none;padding:12px;max-width:760px;margin:0 auto;"></div>
 <div id="view-traslados" style="display:none;padding:12px;max-width:760px;margin:0 auto;"></div>
+<div id="view-inventario" style="display:none;padding:12px;max-width:760px;margin:0 auto;"></div>
 
 <div id="view-stock">
 <div class="search-wrap">
@@ -734,14 +736,17 @@ function verTab(t) {
   document.getElementById('view-espalma').style.display = t === 'espalma' ? '' : 'none';
   document.getElementById('view-redis').style.display = t === 'redis' ? '' : 'none';
   document.getElementById('view-traslados').style.display = t === 'traslados' ? '' : 'none';
+  document.getElementById('view-inventario').style.display = t === 'inventario' ? '' : 'none';
   document.getElementById('tab-stock').classList.toggle('active', t === 'stock');
   document.getElementById('tab-espalma').classList.toggle('active', t === 'espalma');
   document.getElementById('tab-redis').classList.toggle('active', t === 'redis');
   document.getElementById('tab-traslados').classList.toggle('active', t === 'traslados');
+  document.getElementById('tab-inventario').classList.toggle('active', t === 'inventario');
   if (t === 'espalma') renderListasChips();
   if (t === 'espalma' && !espCargado) { espCargado = true; cargarEspalma(); }
   if (t === 'redis') cargarRedistribucion();
   if (t === 'traslados') cargarHistorialTraslados();
+  if (t === 'inventario') invInit();
 }
 
 // ═══ Listas (Espalma / Ropa de cama / Alf. baño / Alfombras) ═══
@@ -803,6 +808,10 @@ async function detectarAdmin() {
   } catch (_) { esAdmin = false; }
   document.getElementById('btn-esp-add').style.display = esAdmin ? '' : 'none';
   document.getElementById('tab-redis').style.display = (esAdmin || esGerente) ? '' : 'none';
+  if (new URLSearchParams(location.search).get('vista') === 'inventario') {
+    history.replaceState(null, '', location.pathname);
+    verTab('inventario');
+  }
   if (new URLSearchParams(location.search).get('vista') === 'redistribucion' && (esAdmin || esGerente)) {
     history.replaceState(null, '', location.pathname);
     verTab('redis');
@@ -2342,6 +2351,7 @@ mostrarVacio();
 })();
 </script>
 <script src="manual.js?v=7"></script>
+<script src="inventario.js?v=1"></script>
 <script>
 // (24-ago) Blindaje iOS: re-suscripcion automatica de push (ver regla en
 // las otras apps). Solo si el permiso esta concedido y esta usuaria ya
