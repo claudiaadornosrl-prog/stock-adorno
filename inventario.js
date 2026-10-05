@@ -198,10 +198,17 @@ function invRenderConteo() {
           ${i.foto ? `<img src="${escHtml(i.foto)}" loading="lazy" alt="">` : '<div class="inv-nofoto">📦</div>'}
           <div class="inv-item-txt"><div class="inv-item-desc">${escHtml(i.descripcion || i.sku)}</div>
             <div class="inv-mini">${escHtml(i.sku)}${i.fuera_de_hoja ? ' · agregado' : ''}${estado === 'recontar' ? ' · <b style="color:#b45309">volver a contar</b>' : ''}${estado === 'ok' && !cerrada ? ' · ✓' : ''}</div></div>
-          ${cerrada ? `<div class="inv-cant-fija">${invN(i.conteo2 ?? i.conteo1)}</div>`
-            : estado === 'ok' ? `<div class="inv-cant-fija">${invN(i.conteo1)}</div>`
-            : `<input class="inv-cant" type="number" inputmode="numeric" min="0" step="1" data-sin-miles placeholder="¿cuántos?" data-ronda="${estado === 'recontar' ? 2 : 1}" value="">`}
-        </div>`; }).join('')}
+          ${cerrada ? `<div class="inv-cant-fija">${invN(i.conteo2 ?? i.conteo1)}${invLugaresTxt(i.conteo2 != null ? i.conteo2_lugares : i.conteo1_lugares)}</div>`
+            : estado === 'ok' ? `<div class="inv-cant-fija">${invN(i.conteo1)}${invLugaresTxt(i.conteo1_lugares)}</div>`
+            : `<div class="inv-cant-box"><input class="inv-cant" type="number" inputmode="numeric" min="0" step="1" data-sin-miles placeholder="¿cuántos?" data-ronda="${estado === 'recontar' ? 2 : 1}" value="">
+               <button type="button" class="inv-lugar-btn" title="Anotar cuántos contaste en cada lugar (vidriera, depósito, baulera…)" onclick="invLugares(this)">📍 por lugar</button></div>`}
+        </div>
+        ${!cerrada && estado !== 'ok' ? `<div class="inv-lugares" style="display:none">
+          ${(estado === 'recontar' ? (i.conteo1_lugares || []) : []).map(l => `<div class="inv-lugar-row"><input class="inv-lugar-nom" list="inv-lugares-dl" placeholder="lugar" value="${escHtml(l.lugar || '')}"><input class="inv-lugar-cant" type="number" inputmode="numeric" min="0" data-sin-miles placeholder="cant." value="" oninput="invSumarLugares(this)"><button type="button" class="inv-lugar-x" onclick="this.parentNode.remove();invSumarLugares(this)">✕</button></div>`).join('')}
+          <button type="button" class="inv-btn gh chica" onclick="invLugarAgregar(this)">➕ otro lugar</button>
+          <span class="inv-mini">La cantidad del artículo es la suma de los lugares.</span>
+        </div>` : ''}`; }).join('')}
+    <datalist id="inv-lugares-dl">${[...new Set(['Vidriera', 'Exhibición', 'Mostrador', 'Depósito', 'Depósito de arriba', 'Baulera', 'Cajones', 'Góndola'].concat(d.lugares || []))].map(l => `<option value="${escHtml(l)}">`).join('')}</datalist>
     </div>
     ${cerrada ? '' : `
     <div class="inv-row" style="margin-top:10px">
@@ -215,12 +222,51 @@ function invRenderConteo() {
     </div>`}
   </div>`;
 }
+// ── Conteo por lugar: el mismo SKU repartido en vidriera / depósito / baulera… ──
+const invLugaresTxt = l => (Array.isArray(l) && l.length) ? `<div class="inv-mini inv-lugares-txt">${l.map(x => `${Number(x.cant) || 0} ${escHtml(x.lugar || '')}`).join(' · ')}</div>` : '';
+function invLugares(btn) {
+  const item = btn.closest('.inv-item'), box = item.nextElementSibling;
+  if (!box || !box.classList.contains('inv-lugares')) return;
+  const abierto = box.style.display !== 'none';
+  box.style.display = abierto ? 'none' : '';
+  if (!abierto && !box.querySelector('.inv-lugar-row')) { invLugarAgregar(box.querySelector('.inv-btn')); invLugarAgregar(box.querySelector('.inv-btn')); }
+  invSumarLugares(box);
+}
+function invLugarAgregar(btn) {
+  const box = btn.closest('.inv-lugares');
+  const row = document.createElement('div'); row.className = 'inv-lugar-row';
+  row.innerHTML = `<input class="inv-lugar-nom" list="inv-lugares-dl" placeholder="lugar"><input class="inv-lugar-cant" type="number" inputmode="numeric" min="0" data-sin-miles placeholder="cant." oninput="invSumarLugares(this)"><button type="button" class="inv-lugar-x" onclick="this.parentNode.remove();invSumarLugares(this)">✕</button>`;
+  box.insertBefore(row, btn);
+  row.querySelector('.inv-lugar-nom').focus();
+}
+// Con lugares cargados, la cantidad del artículo es la suma y no se edita a mano.
+function invSumarLugares(el) {
+  const box = el.closest ? (el.classList.contains('inv-lugares') ? el : el.closest('.inv-lugares')) : null;
+  if (!box) return;
+  const item = box.previousElementSibling, inp = item && item.querySelector('input.inv-cant'); if (!inp) return;
+  const rows = [...box.querySelectorAll('.inv-lugar-row')].filter(r => r.querySelector('.inv-lugar-cant').value !== '');
+  if (box.style.display !== 'none' && rows.length) {
+    inp.value = rows.reduce((a, r) => a + (Number(r.querySelector('.inv-lugar-cant').value) || 0), 0);
+    inp.readOnly = true; inp.classList.add('suma');
+  } else { inp.readOnly = false; inp.classList.remove('suma'); }
+}
+function invLugaresDe(item) {
+  const box = item.nextElementSibling;
+  if (!box || !box.classList.contains('inv-lugares') || box.style.display === 'none') return null;
+  const l = [...box.querySelectorAll('.inv-lugar-row')].map(r => ({ lugar: r.querySelector('.inv-lugar-nom').value.trim(), cant: r.querySelector('.inv-lugar-cant').value }))
+    .filter(x => x.lugar || x.cant !== '');
+  return l.length ? l : null;
+}
+
 async function invGuardarConteo(cerrar) {
   const h = INV.hoja.hoja;
   const r1 = [], r2 = [];
   document.querySelectorAll('#view-inventario .inv-item').forEach(el => {
-    const inp = el.querySelector('input.inv-cant'); if (!inp || inp.value === '') return;
-    (inp.dataset.ronda === '2' ? r2 : r1).push({ sku: el.dataset.sku, cantidad: Number(inp.value) });
+    const inp = el.querySelector('input.inv-cant'); if (!inp) return;
+    const lugares = invLugaresDe(el);
+    if (inp.value === '' && !lugares) return;
+    const it = { sku: el.dataset.sku, cantidad: Number(inp.value) }; if (lugares) it.lugares = lugares;
+    (inp.dataset.ronda === '2' ? r2 : r1).push(it);
   });
   if (!r1.length && !r2.length && !cerrar) { toast('No escribiste ninguna cantidad.'); return; }
   let res = null;
@@ -266,8 +312,8 @@ function invRenderControl() {
       ${items.map(i => {
         const ult = i.conteo2 ?? i.conteo1, dif = ult == null ? null : ult - (i.stock_foto ?? 0);
         return `<tr class="${dif ? 'dif' : ''}${i.picking ? ' pick' : ''}" data-sku="${escHtml(i.sku)}">
-          <td><div class="inv-item-desc">${i.picking ? '🎯 ' : ''}${escHtml(i.descripcion || i.sku)}</div><div class="inv-mini">${escHtml(i.sku)}${i.fuera_de_hoja ? ' · <b>agregado por la vendedora</b>' : ''}${i.stock_cierre != null && i.stock_cierre !== i.stock_foto ? ` · se movió a ${i.stock_cierre}` : ''}</div></td>
-          <td class="num">${invN(i.stock_foto)}</td><td class="num">${invN(i.conteo1)}</td><td class="num">${invN(i.conteo2)}</td>
+          <td><div class="inv-item-desc">${i.picking ? '🎯 ' : ''}${escHtml(i.descripcion || i.sku)}</div><div class="inv-mini">${escHtml(i.sku)}${i.fuera_de_hoja ? ' · <b>agregado por la vendedora</b>' : ''}${i.stock_cierre != null && i.stock_cierre !== i.stock_foto ? ` · se movió a ${i.stock_cierre}` : ''}</div>${invLugaresTxt(i.conteo2_lugares || i.conteo1_lugares)}</td>
+          <td class="num">${invN(i.stock_foto)}</td><td class="num" title="${escHtml(invLugaresPlano(i.conteo1_lugares))}">${invN(i.conteo1)}${i.conteo1_lugares ? ' 📍' : ''}</td><td class="num" title="${escHtml(invLugaresPlano(i.conteo2_lugares))}">${invN(i.conteo2)}${i.conteo2_lugares ? ' 📍' : ''}</td>
           <td class="num ${dif > 0 ? 'mas' : dif < 0 ? 'menos' : ''}">${dif == null ? '' : (dif > 0 ? '+' : '') + dif}</td>
           <td>${controlada ? invN(i.recuento_enc) : `<input class="inv-cant chica" type="number" inputmode="numeric" min="0" data-sin-miles value="${invN(i.recuento_enc)}">`}</td>
           <td>${controlada ? (i.decision === 'ajustar' ? `ajustar (${i.ajuste > 0 ? '+' : ''}${i.ajuste})` : i.decision === 'no_ajustar' ? 'no ajustar' : '')
@@ -305,6 +351,7 @@ async function invGuardarControl(cerrar) {
   toast(cerrar ? '✓ Hoja controlada' : '✓ Guardado');
   await invAbrirHoja(h.id);
 }
+const invLugaresPlano = l => Array.isArray(l) ? l.map(x => `${Number(x.cant) || 0} en ${x.lugar || '?'}`).join(', ') : '';
 function invCopiarAjustes() {
   const h = INV.hoja.hoja, ap = (h.empleado_nombre || '').split(' ')[0].toUpperCase();
   const txt = INV.hoja.items.filter(i => i.decision === 'ajustar' && Number(i.ajuste)).map(i => `${i.sku}\t${i.ajuste > 0 ? '+' : ''}${i.ajuste}\t${i.descripcion || ''}`).join('\n');
@@ -334,7 +381,11 @@ function invCopiarAjustes() {
   .inv-item-txt{flex:1;min-width:0}.inv-item-desc{font-weight:600;font-size:14px;line-height:1.25}
   .inv-item.recontar{background:#fef3c7;margin:0 -6px;padding:8px 6px;border-radius:8px}.inv-item.ok .inv-item-desc{color:#64748b;font-weight:500}.inv-item.extra{background:#eff6ff}
   .inv-cant{width:88px;padding:10px 8px;font-size:18px;text-align:center;border:2px solid #cbd5e1;border-radius:10px;font-family:inherit}
-  .inv-item.recontar .inv-cant{border-color:#f59e0b}.inv-cant-fija{width:88px;text-align:center;font-size:18px;font-weight:700;color:#334155}
+  .inv-item.recontar .inv-cant{border-color:#f59e0b}.inv-cant.suma{background:#f1f5f9;color:#334155}
+  .inv-cant-box{display:flex;flex-direction:column;align-items:center;gap:3px}.inv-lugar-btn{border:none;background:none;color:#1d4ed8;font-size:11.5px;cursor:pointer;font-family:inherit;padding:0}
+  .inv-lugares{background:#f8fafc;border-radius:9px;padding:8px 10px;margin:-4px 0 8px 62px}.inv-lugar-row{display:flex;gap:6px;margin-bottom:6px;align-items:center}
+  .inv-lugar-nom{flex:1;min-width:0;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-family:inherit;font-size:14px}.inv-lugar-cant{width:72px;padding:8px 6px;border:1px solid #cbd5e1;border-radius:8px;text-align:center;font-size:15px;font-family:inherit}
+  .inv-lugar-x{border:none;background:none;color:#991b1b;font-size:15px;cursor:pointer}.inv-btn.chica{padding:5px 9px;font-size:12.5px}.inv-lugares-txt{margin-top:2px;text-align:left}.inv-cant-fija{width:88px;text-align:center;font-size:18px;font-weight:700;color:#334155}
   .inv-tabla-wrap{overflow-x:auto}.inv-tabla{width:100%;border-collapse:collapse;font-size:13px}.inv-tabla th,.inv-tabla td{padding:6px 5px;border-bottom:1px solid #f1f5f9;text-align:left;vertical-align:top}
   .inv-tabla td.num,.inv-tabla th.num{text-align:right}.inv-tabla tr.dif{background:#fff7ed}.inv-tabla tr.pick td:first-child{font-weight:600}.inv-tabla td.mas{color:#166534;font-weight:700}.inv-tabla td.menos{color:#b91c1c;font-weight:700}`;
   document.head.appendChild(s);
