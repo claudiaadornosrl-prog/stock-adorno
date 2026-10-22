@@ -1,5 +1,5 @@
 // Service Worker — Stock Adorno
-const CACHE_VERSION = 'stock-adorno-v71-vapid-nueva';
+const CACHE_VERSION = 'stock-adorno-v72-sesion-vieja';
 const CACHE_ASSETS = ['./', './index.html',
   './manual.js', './inventario.js', './manifest.webmanifest', './favicon.svg'];
 
