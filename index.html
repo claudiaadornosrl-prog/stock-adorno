@@ -548,8 +548,8 @@ tr.drag-over { border-top: 3px solid var(--primary); }
 // ═══════════════════════════════════════════════════════════════════
 // CONFIG
 // ═══════════════════════════════════════════════════════════════════
-const SUPA_URL = 'https://kwwiykssrpabncpqtmwi.supabase.co';
-const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt3d2l5a3NzcnBhYm5jcHF0bXdpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzNjI1NTQsImV4cCI6MjA5NDkzODU1NH0.O1VhKdjPahnJJ9qXcQuSKQbnKGhsEZqYmjDEfRuRpkc';
+const SUPA_URL = 'https://jfwtiagteuwmyvblgwms.supabase.co';
+const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Impmd3RpYWd0ZXV3bXl2Ymxnd21zIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI2NjgyNTAsImV4cCI6MjEwODI0NDI1MH0.LyDolbCwWWKXiiakFwX3PHK8ALDKaV6p-fWQzf-L7u0';
 ADORNO_SSO.migrar('stock-adorno-auth', 'stock');
 const sb = window.supabase.createClient(SUPA_URL, SUPA_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, storageKey: ADORNO_SSO.KEY }
@@ -1442,7 +1442,21 @@ async function solicitarImagen(sku) {
 }
 
 // ── Notificaciones push (traslados, pedidos de foto) ──
-const VAPID_PUBLIC_KEY = 'BJr3r3C_T-euS9kqRZX561MoMjHtMl2wpMfS8oUA17xv1TdlA6E3S_5VKyQO2kqlqngPHrQSGr-PpJutXdgKsKc';
+const VAPID_PUBLIC_KEY = 'BIYqIamefFB0ZmTt31sm4ubbKcq0hGHRoG4StSLO26HPpjYL58n6uvHaQmTYTqtW1Tr4qp_bEs6TrvMxlROmqp8';
+
+  // (22-oct-2026, migración a São Paulo) si la suscripción del navegador es de la clave VAPID vieja, se descarta para re-suscribir con la nueva
+  async function _getSubFresca(reg) {
+    const sub = await reg.pushManager.getSubscription();
+    if (!sub) return null;
+    try {
+      const k = sub.options && sub.options.applicationServerKey;
+      if (k) {
+        const s = btoa(String.fromCharCode(...new Uint8Array(k))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+        if (s !== VAPID_PUBLIC_KEY) { await sub.unsubscribe().catch(() => {}); return null; }
+      }
+    } catch (_) {}
+    return sub;
+  }
 
 function urlB64ToUint8(b64) {
   const pad = '='.repeat((4 - (b64.length % 4)) % 4);
@@ -1462,7 +1476,7 @@ async function actualizarBtnNotifs() {
   if (!notifsSoportadas()) { btn.style.display = 'none'; return; }
   try {
     const reg = await navigator.serviceWorker.ready;
-    const sub = await reg.pushManager.getSubscription();
+    const sub = await _getSubFresca(reg);
     if (sub) { btn.textContent = '🔔 Notificaciones activadas'; btn.classList.add('on'); }
     else     { btn.textContent = '🔕 Activar notificaciones';  btn.classList.remove('on'); }
   } catch (_) {}
@@ -1471,7 +1485,7 @@ async function actualizarBtnNotifs() {
 async function toggleNotifs() {
   if (!notifsSoportadas()) { toast('Este dispositivo no soporta notificaciones.'); return; }
   const reg = await navigator.serviceWorker.ready;
-  const actual = await reg.pushManager.getSubscription();
+  const actual = await _getSubFresca(reg);
 
   // Ya activadas → desactivar
   if (actual) {
@@ -2377,7 +2391,7 @@ mostrarVacio();
     const { data: filas } = await q;
     if (!filas || !filas.length) return;
     const reg = await navigator.serviceWorker.ready;
-    let sub = await reg.pushManager.getSubscription();
+    let sub = await _getSubFresca(reg);
     if (!sub) {
       sub = await reg.pushManager.subscribe({
         userVisibleOnly: true,
