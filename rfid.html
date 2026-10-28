@@ -29,7 +29,9 @@ input[type=text], select { font: inherit; font-size: 15px; padding: 8px 10px; bo
 .estado .punto { width: 10px; height: 10px; border-radius: 50%; background: currentColor; }
 .estado.on .punto { animation: lat 1.2s infinite; }
 @keyframes lat { 50% { opacity: .25; } }
-#cap { position: absolute; left: -9999px; width: 10px; height: 10px; }
+#cap { display: block; width: 100%; height: 46px; margin-top: 8px; padding: 6px 8px; resize: none; border: 1px dashed var(--border);
+  border-radius: 8px; background: #fafafa; color: var(--muted); font: 12px ui-monospace, monospace; }
+#cap:focus { outline: none; border-color: var(--ok); }
 .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; text-align: center; }
 .kpi b { display: block; font-size: 26px; color: var(--primary); line-height: 1.1; }
 .kpi.grande b { font-size: 38px; }
@@ -82,7 +84,7 @@ h2 { font-size: 14px; margin: 0 0 8px; color: var(--muted); font-weight: 600; di
       </select>
     </div>
     <div class="estado off" id="estado" style="margin-top:10px"><span class="punto"></span><span id="estado-tx">En pausa · tocá acá para empezar a leer</span></div>
-    <textarea id="cap" inputmode="none" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></textarea>
+    <textarea id="cap" inputmode="none" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Acá aparece lo que escribe la C72 al apretar el gatillo"></textarea>
   </div>
 
   <div class="card">
@@ -94,7 +96,7 @@ h2 { font-size: 14px; margin: 0 0 8px; color: var(--muted); font-weight: 600; di
     </div>
     <div class="acciones">
       <button class="ico" id="b-nueva" title="Nueva pasada: borra lo leído en esta pantalla (no toca lo guardado)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg></button>
-      <button class="ico principal" id="b-guardar" title="Guardar esta pasada" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3h11l3 3v15H5z"/><path d="M8 3v5h8V3"/><path d="M8 21v-7h8v7"/></svg></button>
+      <button class="ico principal" id="b-guardar" title="Guardar esta pasada"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3h11l3 3v15H5z"/><path d="M8 3v5h8V3"/><path d="M8 21v-7h8v7"/></svg></button>
       <button class="ico" id="b-olvidar" title="Olvidar los nombres puestos a las etiquetas"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12V4h8l10 10-8 8z"/><circle cx="7.5" cy="8.5" r="1.5"/><path d="M15 3l6 6"/></svg></button>
     </div>
     <div class="ultimo" id="ultimo"></div>
@@ -220,7 +222,6 @@ function pintarYa() {
   $('k-total').textContent = total;
   $('k-tiempo').textContent = t0 === null ? '0 s' : (seg < 60 ? Math.round(seg) + ' s' : Math.floor(seg / 60) + ' min ' + Math.round(seg % 60) + ' s');
   $('k-vel').textContent = t0 === null ? '0' : (total / seg).toFixed(total / seg < 10 ? 1 : 0);
-  $('b-guardar').disabled = !codigos.size;
 
   const items = [...codigos.values()].sort((a, b) => a.t - b.t);
   const ul = $('leidas');
@@ -263,6 +264,10 @@ $('b-olvidar').addEventListener('click', () => {
   escuchar();
 });
 $('b-guardar').addEventListener('click', async () => {
+  if (!codigos.size) {
+    alert('Todavía no se leyó nada en esta pasada.\n\nAl apretar el gatillo tienen que aparecer códigos en el recuadro punteado. Si no aparece nada, la C72 no está escribiendo en Chrome: revisá en el KeyboardEmulator el "Process mode".');
+    escuchar(); return;
+  }
   if (!usuario) ponerUsuario((await sb.auth.getSession()).data.session);
   if (!usuario) {
     alert('Todavía no entraste con tu usuario en este equipo, así que no se puede guardar.\n\nLo leído NO se pierde: abrí el módulo Stock en otra pestaña, entrá, y volvé a esta pestaña para guardar.');
