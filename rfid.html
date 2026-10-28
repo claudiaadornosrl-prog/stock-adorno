@@ -69,7 +69,7 @@ h2 { font-size: 14px; margin: 0 0 8px; color: var(--muted); font-weight: 600; di
 </div>
 
 <main>
-  <div class="aviso" id="sin-sesion" hidden>Para <b>guardar</b> las pasadas, primero entrá al <a href="./index.html">módulo Stock</a> en este equipo con tu usuario. Contar funciona igual sin entrar.</div>
+  <div class="aviso" id="sin-sesion" hidden>⚠ <b>No entraste con tu usuario</b>: así no se pueden guardar las pasadas. Abrí el <a href="./index.html" target="_blank">módulo Stock</a>, entrá, y volvé a esta pestaña (lo leído no se pierde). Contar funciona igual.</div>
 
   <div class="card">
     <div class="fila">
@@ -263,7 +263,11 @@ $('b-olvidar').addEventListener('click', () => {
   escuchar();
 });
 $('b-guardar').addEventListener('click', async () => {
-  if (!usuario) { toast('Para guardar, primero entrá al módulo Stock'); return; }
+  if (!usuario) ponerUsuario((await sb.auth.getSession()).data.session);
+  if (!usuario) {
+    alert('Todavía no entraste con tu usuario en este equipo, así que no se puede guardar.\n\nLo leído NO se pierde: abrí el módulo Stock en otra pestaña, entrá, y volvé a esta pestaña para guardar.');
+    return;
+  }
   const btn = $('b-guardar'); btn.disabled = true;
   const fila = {
     nota: $('nota').value.trim() || null,
@@ -307,12 +311,17 @@ $('guardadas').addEventListener('click', async e => {
 });
 
 // ── Sesión ───────────────────────────────────────────────────────────
-(async () => {
-  const { data } = await sb.auth.getSession();
-  usuario = data.session?.user || null;
-  $('quien').innerHTML = usuario ? escHtml(usuario.email) : '<a href="./index.html">Entrar</a>';
+function ponerUsuario(session) {
+  const antes = usuario?.id;
+  usuario = session?.user || null;
+  $('quien').innerHTML = usuario ? escHtml(usuario.email) : '<a href="./index.html" target="_blank">Entrar</a>';
   $('sin-sesion').hidden = !!usuario;
-  cargarGuardadas();
+  if (usuario && usuario.id !== antes) cargarGuardadas();
+}
+// Si entra al módulo Stock en otra pestaña, al volver acá la sesión se toma sola (sin recargar y sin perder lo leído)
+sb.auth.onAuthStateChange((_ev, session) => ponerUsuario(session));
+(async () => {
+  ponerUsuario((await sb.auth.getSession()).data.session);
   pintarYa();
   escuchar();
 })();
