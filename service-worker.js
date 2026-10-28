@@ -1,5 +1,5 @@
 // Service Worker — Stock Adorno
-const CACHE_VERSION = 'stock-adorno-v76-clodi';
+const CACHE_VERSION = 'stock-adorno-v77-clodi3d';
 const CACHE_ASSETS = ['./', './index.html',
   './manual.js', './inventario.js', './manifest.webmanifest', './favicon.svg'];
 
