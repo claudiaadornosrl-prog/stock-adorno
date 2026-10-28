@@ -43,6 +43,7 @@ input[type=text], select { font: inherit; font-size: 15px; padding: 8px 10px; bo
 .ico.principal { color: var(--primary); }
 .ico.principal svg { width: 34px; height: 34px; }
 .ico:disabled { opacity: .35; cursor: default; background: transparent; }
+.ico.armado { color: var(--no); background: var(--no-bg); }
 h2 { font-size: 14px; margin: 0 0 8px; color: var(--muted); font-weight: 600; display: flex; flex-wrap: wrap; align-items: center; gap: 0 6px; }
 .lista { list-style: none; margin: 0; padding: 0; }
 .lista li { display: flex; align-items: center; gap: 8px; padding: 7px 4px; border-top: 1px solid var(--border); font-size: 14px; }
@@ -136,7 +137,7 @@ function grabarLS(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } ca
 
 // ── Estado de la pasada ──────────────────────────────────────────────
 let codigos = new Map();      // crudo -> {c, n, t, txt, tid}
-let total = 0, t0 = null, tUlt = null;
+let total = 0, t0 = null, tUlt = null, cortados = 0;
 let nombres = leerLS('rfid-nombres', {});   // crudo o EPC -> nombre (para la prueba por material)
 let usuario = null;
 
@@ -154,9 +155,12 @@ function hexATexto(h) {
   return s.length >= 2 ? s : null;
 }
 // La C72 puede mandar EPC, TID o EPC+TID (formato a confirmar): el TID de Impinj son 24 hex que empiezan con E2
+// Largos válidos en hex: EPC de 96 o 128 bits, solo o seguido del TID (24 hex). Otro largo = código cortado (se descarta)
+const LARGOS_EPC = new Set([24, 32, 48, 56]);
 function interpretar(crudo) {
   const hex = crudo.replace(/[\s,;|:\-]/g, '').toUpperCase();
   if (!/^[0-9A-F]{8,}$/.test(hex)) return { c: crudo, tipo: 'otro', txt: crudo };
+  if (!LARGOS_EPC.has(hex.length)) return /^\d+$/.test(hex) ? { c: hex, tipo: 'otro', txt: hex } : { c: hex, tipo: 'cortado' };
   let epc = hex, tid = null;
   if (hex.length > 24 && hex.slice(-24).startsWith('E2')) { epc = hex.slice(0, -24); tid = hex.slice(-24); }
   return { c: hex, epc, tid, tipo: 'rfid', txt: hexATexto(epc) };
@@ -168,8 +172,9 @@ function procesarLinea(linea) {
   const ahora = Date.now();
   if (t0 === null) { t0 = ahora; pedirPantallaPrendida(); }
   tUlt = ahora;
-  total++;
   const r = interpretar(linea);
+  if (r.tipo === 'cortado') { cortados++; $('ultimo').textContent = 'Descartado (llegó cortado): ' + linea + ' · descartados: ' + cortados; return; }
+  total++;
   const prev = codigos.get(r.c);
   if (prev) prev.n++;
   else codigos.set(r.c, { c: r.c, n: 1, t: ahora - t0, txt: r.txt || null, tid: r.tid || null, tipo: r.tipo, epc: r.epc || null });
@@ -190,6 +195,21 @@ cap.addEventListener('input', () => {
   if (resto) ocioso = setTimeout(() => { if (cap.value.trim().length >= 8) { const v = cap.value; cap.value = ''; procesarLinea(v); } }, 400);
 });
 function escuchar() { cap.focus({ preventScroll: true }); pintarEstado(); }
+// La C72 tipea código + Enter: si el foco quedó en un botón, ese Enter lo "apretaría" (¡incluso el tachito!).
+// Toda tecla que llegue fuera del recuadro, de la nota o del local se frena y el foco vuelve al recuadro.
+const enCampo = () => [cap, $('nota'), $('local')].includes(document.activeElement);
+document.addEventListener('keydown', e => {
+  if (enCampo()) return;
+  e.preventDefault(); e.stopPropagation();
+  escuchar();
+}, true);
+setInterval(() => { if (document.visibilityState === 'visible' && !enCampo()) escuchar(); }, 800);
+// Las acciones que borran se confirman tocando dos veces (sin confirm(): un Enter de la C72 lo aceptaría solo)
+function dobleToque(btn, aviso, accion) {
+  if (btn.dataset.armado === '1') { delete btn.dataset.armado; btn.classList.remove('armado'); accion(); return; }
+  btn.dataset.armado = '1'; btn.classList.add('armado'); toast(aviso);
+  setTimeout(() => { delete btn.dataset.armado; btn.classList.remove('armado'); }, 3000);
+}
 function pintarEstado() {
   const on = document.activeElement === cap;
   $('estado').className = 'estado ' + (on ? 'on' : 'off');
@@ -255,12 +275,14 @@ $('leidas').addEventListener('click', e => {
 // ── Acciones ─────────────────────────────────────────────────────────
 function limpiar() { codigos = new Map(); total = 0; t0 = tUlt = null; $('ultimo').textContent = ''; try { lock?.release(); } catch (_) {} lock = null; pintarYa(); }
 $('b-nueva').addEventListener('click', () => {
-  if (codigos.size && !confirm('¿Borrar lo leído en esta pasada sin guardarlo?')) { escuchar(); return; }
-  limpiar(); escuchar();
+  if (!codigos.size) { limpiar(); escuchar(); return; }
+  dobleToque($('b-nueva'), 'Tocá de nuevo para borrar lo leído sin guardarlo', () => { limpiar(); toast('Pasada nueva'); });
+  escuchar();
 });
 $('b-olvidar').addEventListener('click', () => {
-  if (!Object.keys(nombres).length) { toast('No hay nombres puestos'); escuchar(); return; }
-  if (confirm('¿Olvidar los ' + Object.keys(nombres).length + ' nombres puestos a etiquetas?')) { nombres = {}; grabarLS('rfid-nombres', nombres); pintarYa(); }
+  const n = Object.keys(nombres).length;
+  if (!n) { toast('No hay nombres puestos'); escuchar(); return; }
+  dobleToque($('b-olvidar'), 'Tocá de nuevo para olvidar los ' + n + ' nombres', () => { nombres = {}; grabarLS('rfid-nombres', nombres); pintarYa(); toast('Nombres olvidados'); });
   escuchar();
 });
 $('b-guardar').addEventListener('click', async () => {
@@ -292,7 +314,8 @@ $('b-guardar').addEventListener('click', async () => {
   };
   if ($('local').value) fila.local = $('local').value;
   const { data, error } = await sb.from('stock_rfid_lecturas').insert(fila).select('id').single();
-  if (error) { btn.disabled = false; toast('No se pudo guardar: ' + error.message); return; }
+  btn.disabled = false;   // (b624cec lo dejaba apagado después del primer guardado: "no me deja guardar")
+  if (error) { toast('No se pudo guardar: ' + error.message); return; }
   toast('Pasada #' + data.id + ' guardada · ' + fila.unicos + ' etiquetas');
   limpiar(); cargarGuardadas(); escuchar();
 });
@@ -309,10 +332,12 @@ async function cargarGuardadas() {
 $('guardadas').addEventListener('click', async e => {
   const b = e.target.closest('[data-borrar]');
   if (!b) return;
-  if (!confirm('¿Borrar la pasada #' + b.dataset.borrar + '?')) { escuchar(); return; }
-  const { error } = await sb.from('stock_rfid_lecturas').delete().eq('id', b.dataset.borrar);
-  toast(error ? 'No se pudo borrar: ' + error.message : 'Pasada borrada');
-  cargarGuardadas(); escuchar();
+  dobleToque(b, 'Tocá de nuevo el tachito para borrar la pasada #' + b.dataset.borrar, async () => {
+    const { error } = await sb.from('stock_rfid_lecturas').delete().eq('id', b.dataset.borrar);
+    toast(error ? 'No se pudo borrar: ' + error.message : 'Pasada borrada');
+    cargarGuardadas();
+  });
+  escuchar();
 });
 
 // ── Sesión ───────────────────────────────────────────────────────────
