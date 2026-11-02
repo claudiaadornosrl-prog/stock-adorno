@@ -424,7 +424,7 @@ $('l-entrar').addEventListener('click', async () => {
   $('l-pass').value = '';
 });
 if (APP) {
-  cap.hidden = true;
+  cap.style.display = 'none';   // (hidden no alcanza: #cap tiene display:block en el CSS)
   try { appEstado = JSON.parse(AdornoLector.info()); } catch (_) {}
 }
 // Si entra al módulo Stock en otra pestaña, al volver acá la sesión se toma sola (sin recargar y sin perder lo leído)
