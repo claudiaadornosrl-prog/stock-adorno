@@ -12,6 +12,7 @@
 :root { --primary: #1565c0; --primary-dark: #0d47a1; --bg: #f6f8fb; --card: #fff; --border: #e5e7eb;
   --text: #111827; --muted: #6b7280; --ok: #166534; --ok-bg: #dcfce7; --no: #991b1b; --no-bg: #fee2e2; --warn: #92400e; --warn-bg: #fef3c7; }
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+[hidden] { display: none !important; }   /* que .login (grid) y compañía no le ganen a hidden */
 button { touch-action: manipulation; }   /* el toque responde al instante (sin esperar un posible doble toque) */
 body { margin: 0; font-family: 'URW Gothic', system-ui, sans-serif; background: var(--bg); color: var(--text); }
 .header { background: var(--primary); color: #fff; padding: 10px 14px; display: flex; align-items: center; gap: 10px; position: sticky; top: 0; z-index: 5; }
