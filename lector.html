@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Lector RFID · Stock</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<meta name="theme-color" content="#1565c0">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<style>
+@font-face { font-family: 'URW Gothic'; src: url('fonts/URWGothic-Book.ttf') format('truetype'); font-weight: 300 700; font-display: swap; }
+:root { --primary: #1565c0; --primary-dark: #0d47a1; --bg: #f6f8fb; --card: #fff; --border: #e5e7eb;
+  --text: #111827; --muted: #6b7280; --ok: #166534; --ok-bg: #dcfce7; --no: #991b1b; --no-bg: #fee2e2; --warn: #92400e; --warn-bg: #fef3c7; }
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+body { margin: 0; font-family: 'URW Gothic', system-ui, sans-serif; background: var(--bg); color: var(--text); }
+.header { background: var(--primary); color: #fff; padding: 10px 14px; display: flex; align-items: center; gap: 10px; position: sticky; top: 0; z-index: 5; }
+.header h1 { font-size: 18px; margin: 0; flex: 1; display: flex; align-items: center; gap: 8px; }
+.header .quien { font-size: 11.5px; opacity: .85; text-align: right; max-width: 45vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.header a { color: #fff; }
+main { padding: 12px; max-width: 720px; margin: 0 auto; }
+.card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 12px; margin-bottom: 12px; }
+.aviso { background: var(--warn-bg); color: var(--warn); border-radius: 12px; padding: 10px 12px; font-size: 14px; margin-bottom: 12px; }
+/* Lugar */
+.lugares { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 2px; }
+.lugares button { flex: none; font: inherit; font-size: 15px; padding: 9px 14px; border-radius: 99px; border: 1px solid var(--border); background: #fff; color: var(--text); }
+.lugares button.on { background: var(--primary); border-color: var(--primary); color: #fff; font-weight: 700; }
+.fila { display: flex; gap: 8px; align-items: center; margin-top: 10px; }
+.fila select, .fila input { font: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 9px; background: #fff; min-width: 0; }
+.fila input { flex: 1; }
+/* Lectura */
+.lectura { display: flex; align-items: center; gap: 14px; }
+.boton { flex: none; width: 108px; height: 108px; border-radius: 50%; border: 0; background: var(--primary); color: #fff; font: inherit;
+  font-size: 17px; font-weight: 700; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; }
+.boton svg { width: 36px; height: 36px; }
+.boton.leyendo { background: var(--ok); animation: lat 1.1s infinite; }
+.boton.espera { background: #94a3b8; }
+@keyframes lat { 50% { box-shadow: 0 0 0 12px rgba(22,101,52,.15); } }
+.numeros { flex: 1; min-width: 0; }
+.unidades b { font-size: 56px; line-height: 1; color: var(--primary-dark); display: block; }
+.unidades span { font-size: 14px; color: var(--muted); }
+.chicos { display: flex; gap: 14px; margin-top: 6px; font-size: 13px; color: var(--muted); flex-wrap: wrap; }
+.chicos b { color: var(--text); }
+.estado { font-size: 13px; color: var(--muted); margin-top: 10px; min-height: 1.2em; }
+.estado.error { color: var(--no); }
+/* Lista */
+h2 { font-size: 14px; margin: 0 0 6px; color: var(--muted); font-weight: 600; }
+.lista { list-style: none; margin: 0; padding: 0; }
+.lista li { display: flex; align-items: center; gap: 10px; padding: 8px 2px; border-top: 1px solid var(--border); }
+.lista li:first-child { border-top: 0; }
+.lista li.nuevo { animation: brillo 1.2s; }
+@keyframes brillo { from { background: #e8f0fe; } to { background: transparent; } }
+.foto { width: 46px; height: 46px; border-radius: 8px; background: #f1f5f9; flex: none; object-fit: cover; display: flex; align-items: center; justify-content: center; color: #94a3b8; }
+.foto svg { width: 22px; height: 22px; }
+.txt { flex: 1; min-width: 0; }
+.desc { font-size: 14.5px; font-weight: 600; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.sku { font-size: 12px; color: var(--muted); }
+.cant { font-size: 24px; font-weight: 700; color: var(--primary-dark); min-width: 44px; text-align: right; }
+.vacio { color: var(--muted); font-size: 14px; text-align: center; padding: 14px 6px; }
+details { margin-top: 4px; }
+summary { font-size: 13.5px; color: var(--muted); cursor: pointer; padding: 6px 0; }
+.codigos { font-family: ui-monospace, monospace; font-size: 11.5px; color: var(--muted); word-break: break-all; }
+/* Acciones */
+.acciones { display: flex; gap: 10px; }
+.acciones button { flex: 1; font: inherit; font-size: 16px; font-weight: 700; padding: 13px; border-radius: 12px; border: 0; display: flex; align-items: center; justify-content: center; gap: 8px; }
+.acciones svg { width: 20px; height: 20px; }
+.guardar { background: var(--primary); color: #fff; }
+.borrar { background: #fff; color: var(--muted); border: 1px solid var(--border) !important; flex: 0 0 auto !important; }
+.borrar.armado { background: var(--no-bg); color: var(--no); }
+button:disabled { opacity: .5; }
+.pasadas li { font-size: 13.5px; }
+.pasadas .n { font-weight: 700; color: var(--primary-dark); white-space: nowrap; }
+.login { display: grid; gap: 8px; }
+.login input { font: inherit; font-size: 16px; padding: 11px 12px; border: 1px solid var(--border); border-radius: 10px; }
+.login button { font: inherit; font-size: 16px; font-weight: 700; padding: 12px; border: 0; border-radius: 10px; background: var(--primary); color: #fff; }
+.login .err { color: var(--no); font-size: 13px; min-height: 1em; }
+.pie { text-align: center; font-size: 12px; color: var(--muted); margin: 6px 0 24px; }
+.pie a { color: var(--muted); }
+#toast { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); background: #111827; color: #fff; padding: 10px 16px;
+  border-radius: 10px; font-size: 15px; opacity: 0; transition: opacity .2s; pointer-events: none; max-width: 90vw; z-index: 10; }
+#toast.on { opacity: .95; }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12a7 7 0 0 1 14 0"/><path d="M8.5 12a3.5 3.5 0 0 1 7 0"/><circle cx="12" cy="12" r="1"/><path d="M12 13v8"/></svg>Lector RFID</h1>
+  <div class="quien" id="quien">…</div>
+</div>
+
+<main>
+  <div class="aviso" id="sin-app" hidden>Esta pantalla lee con la <b>app Lector Adorno</b> de la C72. Desde Chrome usá la <a href="./rfid.html">prueba RFID</a> (lectura como teclado).</div>
+
+  <div class="card login" id="login" hidden>
+    <h2 style="margin:0">Entrá con tu usuario de Stock</h2>
+    <input type="email" id="l-email" placeholder="Email" autocomplete="username">
+    <input type="password" id="l-pass" placeholder="Contraseña" autocomplete="current-password">
+    <button id="l-entrar">Entrar</button>
+    <div class="err" id="l-err"></div>
+  </div>
+
+  <div class="card">
+    <div class="lugares" id="lugares"></div>
+    <div class="fila">
+      <select id="local" title="Local"><option value="">Mi local</option><option value="alcorta">Alcorta</option><option value="unicenter">Unicenter</option><option value="oficina">Oficina</option></select>
+      <input type="text" id="nota" maxlength="300" placeholder="Nota (opcional)" autocomplete="off">
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="lectura">
+      <button class="boton espera" id="boton" aria-label="Leer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12a7 7 0 0 1 14 0"/><path d="M8.5 12a3.5 3.5 0 0 1 7 0"/><circle cx="12" cy="12" r="1"/><path d="M12 13v8"/></svg><span id="boton-tx">Leer</span></button>
+      <div class="numeros">
+        <div class="unidades"><b id="k-unid">0</b><span>unidades</span></div>
+        <div class="chicos"><span><b id="k-art">0</b> artículos</span><span><b id="k-otras">0</b> otras</span><span id="k-tiempo"></span></div>
+      </div>
+    </div>
+    <div class="estado" id="estado">Preparando el lector…</div>
+  </div>
+
+  <div class="card">
+    <h2 id="tit-lista">Leído en este lugar</h2>
+    <ul class="lista" id="lista"><li class="vacio">Mantené apretado el gatillo y pasá la C72 despacio por el estante.</li></ul>
+    <details id="otras-box" hidden>
+      <summary id="otras-tit"></summary>
+      <div class="codigos" id="otras"></div>
+    </details>
+  </div>
+
+  <div class="acciones card" style="padding:10px">
+    <button class="borrar" id="b-borrar" title="Borrar lo leído sin guardar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"/><path d="M10 11v6M14 11v6"/><path d="M6 7l1 13h10l1-13"/><path d="M9 7V4h6v3"/></svg></button>
+    <button class="guardar" id="b-guardar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3h11l3 3v15H5z"/><path d="M8 3v5h8V3"/><path d="M8 21v-7h8v7"/></svg>Guardar pasada</button>
+  </div>
+
+  <div class="card">
+    <h2>Pasadas guardadas</h2>
+    <ul class="lista pasadas" id="pasadas"><li class="vacio">—</li></ul>
+  </div>
+  <div class="pie" id="pie"><a href="./rfid.html">Prueba técnica</a></div>
+</main>
+<div id="toast"></div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════════
+//  📡 Lector RFID · pantalla de lectura de la app de la C72 (lector-c72, 2-nov-2026)
+//  La app manda lo leído cada 150 ms ({e: EPC, t: TID}); acá se agrupa por artículo:
+//  el EPC trae el SKU en texto y el TID (número de fábrica) distingue cada unidad.
+//  Se guarda cada pasada (lugar + local) en stock_rfid_lecturas, como la prueba técnica.
+// ═══════════════════════════════════════════════════════════════════════
+const SUPA_URL = 'https://jfwtiagteuwmyvblgwms.supabase.co';
+const SUPA_KEY = 'sb_publishable_udSPma98Sw9eskeeLCgdCw_S2vIX0Fk';
+const sb = window.supabase.createClient(SUPA_URL, SUPA_KEY, {
+  auth: { persistSession: true, autoRefreshToken: true, storageKey: 'adorno-auth' }
+});
+const $ = id => document.getElementById(id);
+const escHtml = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const fmtFecha = d => new Intl.DateTimeFormat('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', day: '2-digit', month: '2-digit',
+  hour: '2-digit', minute: '2-digit' }).format(new Date(d));
+function toast(t) { const el = $('toast'); el.textContent = t; el.classList.add('on'); clearTimeout(toast._t); toast._t = setTimeout(() => el.classList.remove('on'), 2600); }
+function leerLS(k, def) { try { return JSON.parse(localStorage.getItem(k)) ?? def; } catch (_) { return def; } }
+function grabarLS(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) {} }
+const APP = !!window.AdornoLector;
+const ICONO_CAJA = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8l-9-5-9 5 9 5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></svg>';
+
+// ── Estado de la pasada ──────────────────────────────────────────────
+let etiquetas = new Map();   // EPC+TID → {epc, tid, sku, n, t}
+let lecturas = 0, t0 = null, tUlt = null, appEstado = {}, usuario = null;
+const articulos = new Map(); // SKU → {desc, foto} (null mientras se busca; false = no es un artículo)
+const cacheArt = leerLS('lector-articulos', {});   // para que los nombres aparezcan al toque la próxima vez
+Object.entries(cacheArt).forEach(([s, a]) => articulos.set(s, a));
+
+// EPC en hex → texto (el SKU grabado en ASCII, relleno con ceros)
+function hexATexto(h) {
+  if (!h || h.length % 2) return null;
+  let s = '';
+  for (let i = 0; i < h.length; i += 2) {
+    const b = parseInt(h.substr(i, 2), 16);
+    if (b === 0) continue;
+    if (b < 0x20 || b > 0x7e) return null;
+    s += String.fromCharCode(b);
+  }
+  s = s.trim();
+  return s.length >= 2 ? s : null;
+}
+
+// ── Lo que manda la app ──────────────────────────────────────────────
+window.adornoLector = {
+  tags(arr) {
+    const ahora = Date.now();
+    if (t0 === null) t0 = ahora;
+    tUlt = ahora;
+    for (const x of arr) {
+      const epc = String(x.e || '').toUpperCase(), tid = String(x.t || '').toUpperCase();
+      if (!epc) continue;
+      lecturas++;
+      const k = epc + '|' + tid, prev = etiquetas.get(k);
+      if (prev) { prev.n++; continue; }
+      const sku = hexATexto(epc);
+      etiquetas.set(k, { epc, tid, sku, n: 1, t: ahora - t0 });
+      if (sku && !articulos.has(sku)) pedirArticulo(sku);
+    }
+    pintar();
+  },
+  estado(o) { appEstado = o || {}; pintarEstado(); }
+};
+
+// ── Nombres y fotos de los artículos (de a tandas) ───────────────────
+let pendientes = new Set(), timerArt = null;
+function pedirArticulo(sku) {
+  articulos.set(sku, null);
+  pendientes.add(sku);
+  clearTimeout(timerArt);
+  timerArt = setTimeout(buscarArticulos, 350);
+}
+async function buscarArticulos() {
+  if (!usuario) return;   // sin sesión no se puede leer el catálogo; se reintenta al entrar
+  const skus = [...pendientes]; pendientes = new Set();
+  if (!skus.length) return;
+  const [{ data: arts }, { data: fotos }] = await Promise.all([
+    sb.from('stock_articulos').select('sku, descripcion').in('sku', skus),
+    sb.from('stock_imagenes').select('sku, url').in('sku', skus),
+  ]);
+  const desc = {}, foto = {};
+  (arts || []).forEach(a => { if (a.descripcion) desc[a.sku] = a.descripcion; });
+  (fotos || []).forEach(f => { foto[f.sku] = f.url; });
+  skus.forEach(s => {
+    const a = desc[s] ? { desc: desc[s], foto: foto[s] || null } : (arts ? false : null);
+    articulos.set(s, a);
+    if (a !== null) cacheArt[s] = a;
+  });
+  grabarLS('lector-articulos', cacheArt);
+  pintar();
+}
+
+// ── Pintar (a lo sumo ~5 veces por segundo, aunque lleguen cientos de lecturas) ──
+let pintando = false;
+function pintar() { if (pintando) return; pintando = true; setTimeout(() => { pintando = false; pintarYa(); }, 200); }
+let yaPintados = new Set();
+function pintarYa() {
+  // Por artículo: etiquetas distintas con el mismo SKU = unidades
+  const porSku = new Map(), otras = [];
+  for (const x of etiquetas.values()) {
+    const a = x.sku ? articulos.get(x.sku) : false;
+    if (x.sku && a !== false) {
+      const g = porSku.get(x.sku) || { u: 0, t: x.t };
+      g.u++; g.t = Math.min(g.t, x.t); porSku.set(x.sku, g);
+    } else otras.push(x);
+  }
+  const unidades = [...porSku.values()].reduce((s, g) => s + g.u, 0);
+  $('k-unid').textContent = unidades;
+  $('k-art').textContent = porSku.size;
+  $('k-otras').textContent = otras.length;
+  const seg = t0 === null ? 0 : Math.round((tUlt - t0) / 1000);
+  $('k-tiempo').textContent = t0 === null ? '' : (seg < 60 ? seg + ' s' : Math.floor(seg / 60) + ' min ' + (seg % 60) + ' s');
+
+  const filas = [...porSku.entries()].sort((a, b) => b[1].t - a[1].t);   // lo último encontrado, arriba
+  $('lista').innerHTML = filas.length ? filas.map(([sku, g]) => {
+    const a = articulos.get(sku);
+    const nuevo = !yaPintados.has(sku); yaPintados.add(sku);
+    return `<li class="${nuevo ? 'nuevo' : ''}">${a && a.foto ? `<img class="foto" src="${escHtml(a.foto)}" loading="lazy" alt="">` : `<div class="foto">${ICONO_CAJA}</div>`}
+      <div class="txt"><div class="desc">${escHtml(a ? a.desc : (usuario ? 'Buscando…' : sku))}</div><div class="sku">${escHtml(sku)}</div></div>
+      <div class="cant">${g.u}</div></li>`;
+  }).join('') : '<li class="vacio">Mantené apretado el gatillo y pasá la C72 despacio por el estante.</li>';
+
+  $('otras-box').hidden = !otras.length;
+  $('otras-tit').textContent = otras.length + (otras.length === 1 ? ' etiqueta que no es un artículo' : ' etiquetas que no son artículos') + ' (de fábrica, de prueba o sin grabar)';
+  $('otras').textContent = otras.slice(0, 200).map(x => x.sku || x.epc).join(' · ');
+}
+
+function pintarEstado() {
+  const b = $('boton'), e = $('estado');
+  const leyendo = !!appEstado.leyendo, listo = !!appEstado.listo;
+  b.className = 'boton ' + (leyendo ? 'leyendo' : listo ? '' : 'espera');
+  $('boton-tx').textContent = leyendo ? 'Parar' : 'Leer';
+  e.classList.toggle('error', !!appEstado.error);
+  e.textContent = !APP ? 'Sin lector: abrí esta pantalla desde la app Lector Adorno de la C72.'
+    : appEstado.error ? appEstado.error
+    : !listo ? 'Preparando el lector…'
+    : leyendo ? 'Leyendo… soltá el gatillo para parar'
+    : 'Mantené apretado el gatillo (o tocá Leer) y pasá la C72 despacio';
+}
+
+// ── Lugar, local y nota ──────────────────────────────────────────────
+const LUGARES = ['Vidriera', 'Exhibición', 'Mostrador', 'Góndola', 'Depósito', 'Depósito de arriba', 'Baulera'];
+let lugar = leerLS('lector-lugar', 'Exhibición');
+function pintarLugares() {
+  const extra = LUGARES.includes(lugar) ? [] : [lugar];
+  $('lugares').innerHTML = [...LUGARES, ...extra].map(l => `<button data-l="${escHtml(l)}" class="${l === lugar ? 'on' : ''}">${escHtml(l)}</button>`).join('')
+    + '<button data-l="">+ otro</button>';
+}
+$('lugares').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  let l = b.dataset.l;
+  if (!l) { l = (prompt('¿Qué lugar es? (ej.: cajones del fondo)') || '').trim(); if (!l) return; }
+  lugar = l; grabarLS('lector-lugar', lugar); pintarLugares();
+});
+pintarLugares();
+$('local').value = leerLS('lector-local', '');
+$('local').addEventListener('change', () => grabarLS('lector-local', $('local').value));
+
+// ── Botones ──────────────────────────────────────────────────────────
+$('boton').addEventListener('click', () => {
+  if (!APP) return;
+  if (AdornoLector.leyendo()) AdornoLector.parar(); else AdornoLector.iniciar();
+});
+function limpiar() {
+  etiquetas = new Map(); lecturas = 0; t0 = tUlt = null; yaPintados = new Set();
+  if (APP) try { AdornoLector.olvidar(); } catch (_) {}
+  pintarYa();
+}
+// Borrar se confirma tocando dos veces (sin confirm(), que un toque de más aceptaría solo)
+$('b-borrar').addEventListener('click', () => {
+  const b = $('b-borrar');
+  if (!etiquetas.size) return;
+  if (b.dataset.armado === '1') { delete b.dataset.armado; b.classList.remove('armado'); limpiar(); toast('Borrado'); return; }
+  b.dataset.armado = '1'; b.classList.add('armado'); toast('Tocá de nuevo el tachito para borrar lo leído');
+  setTimeout(() => { delete b.dataset.armado; b.classList.remove('armado'); }, 3000);
+});
+$('b-guardar').addEventListener('click', async () => {
+  if (!etiquetas.size) { toast('Todavía no se leyó nada'); return; }
+  if (!usuario) { toast('Entrá con tu usuario para guardar (lo leído no se pierde)'); $('l-email').focus(); return; }
+  if (APP && AdornoLector.leyendo()) AdornoLector.parar();
+  const btn = $('b-guardar'); btn.disabled = true;
+  const fila = {
+    modo: 'prueba', lugar, nota: $('nota').value.trim() || null,
+    dispositivo: APP ? 'C72 app ' + (appEstado.app || '') : null,
+    total_lecturas: lecturas, unicos: etiquetas.size, duracion_ms: t0 === null ? null : tUlt - t0,
+    codigos: [...etiquetas.values()].map(x => { const o = { c: x.epc + x.tid, n: x.n, t: x.t }; if (x.sku) o.txt = x.sku; if (x.tid) o.tid = x.tid; return o; })
+  };
+  if ($('local').value) fila.local = $('local').value;
+  const { data, error } = await sb.from('stock_rfid_lecturas').insert(fila).select('id').single();
+  btn.disabled = false;
+  if (error) { toast('No se pudo guardar: ' + error.message); return; }
+  toast('Pasada #' + data.id + ' guardada · ' + $('k-unid').textContent + ' unidades en ' + lugar);
+  $('nota').value = '';
+  limpiar(); cargarPasadas();
+});
+
+async function cargarPasadas() {
+  if (!usuario) return;
+  const { data, error } = await sb.from('stock_rfid_lecturas').select('id, creado_at, local, lugar, nota, unicos, codigos')
+    .eq('creado_por', usuario.id).order('creado_at', { ascending: false }).limit(10);
+  const ul = $('pasadas');
+  if (error) { ul.innerHTML = `<li class="vacio">${escHtml(error.message)}</li>`; return; }
+  if (!data.length) { ul.innerHTML = '<li class="vacio">Todavía no guardaste ninguna.</li>'; return; }
+  ul.innerHTML = data.map(r => {
+    const skus = new Set((r.codigos || []).filter(c => c.txt).map(c => c.txt));
+    return `<li><div class="txt"><div class="desc">${escHtml(r.lugar || 'sin lugar')}${r.nota ? ' · ' + escHtml(r.nota) : ''}</div>
+      <div class="sku">#${r.id} · ${fmtFecha(r.creado_at)} · ${escHtml(r.local || '')} · ${skus.size} artículos</div></div><span class="n">${r.unicos}</span></li>`;
+  }).join('');
+}
+
+// ── Sesión (misma clave que Stock: si ya entraste en Stock, acá ya estás adentro) ──
+function ponerUsuario(session) {
+  const antes = usuario?.id;
+  usuario = session?.user || null;
+  $('quien').textContent = usuario ? usuario.email : 'sin usuario';
+  $('login').hidden = !!usuario;
+  if (usuario && usuario.id !== antes) {
+    cargarPasadas();
+    // Los SKU leídos antes de entrar se buscan ahora
+    for (const [s, a] of articulos) if (a === null) pendientes.add(s);
+    buscarArticulos();
+  }
+}
+$('l-entrar').addEventListener('click', async () => {
+  const email = $('l-email').value.trim(), pass = $('l-pass').value;
+  $('l-err').textContent = '';
+  if (!email || !pass) { $('l-err').textContent = 'Completá email y contraseña.'; return; }
+  $('l-entrar').disabled = true;
+  const { error } = await sb.auth.signInWithPassword({ email, password: pass });
+  $('l-entrar').disabled = false;
+  if (error) { $('l-err').textContent = 'Email o contraseña incorrectos.'; return; }
+  $('l-pass').value = '';
+});
+sb.auth.onAuthStateChange((_ev, session) => ponerUsuario(session));
+(async () => {
+  $('sin-app').hidden = APP;
+  if (APP) { try { appEstado = JSON.parse(AdornoLector.info()); } catch (_) {} $('pie').innerHTML += ' · app ' + escHtml(appEstado.app || ''); }
+  pintarEstado();
+  ponerUsuario((await sb.auth.getSession()).data.session);
+  pintarYa();
+})();
+</script>
+</body>
+</html>
