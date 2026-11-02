@@ -44,6 +44,7 @@ main { padding: 12px; max-width: 720px; margin: 0 auto; }
 .chicos b { color: var(--text); }
 .estado { font-size: 13px; color: var(--muted); margin-top: 10px; min-height: 1.2em; }
 .estado.error { color: var(--no); }
+.fija .aviso { margin: 10px 0 0; font-size: 13.5px; }
 /* Lista */
 h2 { font-size: 14px; margin: 0 0 6px; color: var(--muted); font-weight: 600; }
 .lista { list-style: none; margin: 0; padding: 0; }
@@ -116,6 +117,7 @@ button:disabled { opacity: .5; }
       </div>
     </div>
     <div class="estado" id="estado">Preparando el lector…</div>
+    <div class="aviso" id="viejo" hidden></div>
     <div class="acciones">
       <button class="borrar" id="b-borrar" title="Borrar lo leído sin guardar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"/><path d="M10 11v6M14 11v6"/><path d="M6 7l1 13h10l1-13"/><path d="M9 7V4h6v3"/></svg></button>
       <button class="guardar" id="b-guardar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3h11l3 3v15H5z"/><path d="M8 3v5h8V3"/><path d="M8 21v-7h8v7"/></svg><span id="guardar-tx">Guardar pasada</span></button>
@@ -163,7 +165,10 @@ const ICONO_CAJA = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" s
 
 // ── Estado de la pasada ──────────────────────────────────────────────
 let etiquetas = new Map();   // EPC+TID → {epc, tid, sku, n, t}
-let lecturas = 0, t0 = null, tUlt = null, appEstado = {}, usuario = null;
+// tActivo: tiempo leyendo, sin las pausas entre gatillazos · pausa: minutos de la pausa larga en el medio de la pasada (0 = ninguna)
+let lecturas = 0, t0 = null, tUlt = null, tActivo = 0, pausa = 0, appEstado = {}, usuario = null;
+const PAUSA_LARGA = 5 * 60000;   // más que esto sin leer: probablemente ya es otro lugar
+const fmtMin = m => m < 60 ? m + ' min' : Math.floor(m / 60) + ' h ' + (m % 60) + ' min';
 const articulos = new Map(); // SKU → {desc, foto} (null mientras se busca; false = no es un artículo)
 const cacheArt = leerLS('lector-articulos', {});   // para que los nombres aparezcan al toque la próxima vez
 Object.entries(cacheArt).forEach(([s, a]) => articulos.set(s, a));
@@ -187,6 +192,8 @@ window.adornoLector = {
   tags(arr) {
     const ahora = Date.now();
     if (t0 === null) t0 = ahora;
+    else if (ahora - tUlt > PAUSA_LARGA) pausa = Math.max(pausa, Math.round((ahora - tUlt) / 60000));
+    else if (ahora - tUlt < 3000) tActivo += ahora - tUlt;
     tUlt = ahora;
     for (const x of arr) {
       const epc = String(x.e || '').toUpperCase(), tid = String(x.t || '').toUpperCase();
@@ -195,10 +202,10 @@ window.adornoLector = {
       const k = epc + '|' + tid, prev = etiquetas.get(k);
       if (prev) { prev.n++; continue; }
       const sku = hexATexto(epc);
-      etiquetas.set(k, { epc, tid, sku, n: 1, t: ahora - t0 });
+      etiquetas.set(k, { epc, tid, sku, n: 1, t: tActivo });
       if (sku && !articulos.has(sku)) pedirArticulo(sku);
     }
-    pintar();
+    pintar(); grabarPasada();
   },
   estado(o) { appEstado = o || {}; pintarEstado(); }
 };
@@ -228,8 +235,27 @@ async function buscarArticulos() {
     if (a !== null) cacheArt[s] = a;
   });
   grabarLS('lector-articulos', cacheArt);
-  pintar();
+  pintar(); pintarPasadas();
 }
+
+// ── Lo leído sin guardar queda en el equipo: si Android cierra la app, al volver sigue ahí ──
+let timerGrabar = null;
+function grabarPasada() { if (!timerGrabar) timerGrabar = setTimeout(grabarPasadaYa, 1000); }
+function grabarPasadaYa() {
+  clearTimeout(timerGrabar); timerGrabar = null;
+  if (!etiquetas.size) { try { localStorage.removeItem('lector-pasada'); } catch (_) {} return; }
+  grabarLS('lector-pasada', { e: [...etiquetas.values()], lecturas, t0, tUlt, tActivo, pausa });
+}
+function recuperarPasada() {
+  const p = leerLS('lector-pasada', null);
+  if (!p || !Array.isArray(p.e) || !p.e.length) return;
+  for (const x of p.e) {
+    etiquetas.set(x.epc + '|' + x.tid, x);
+    if (x.sku && !articulos.has(x.sku)) pedirArticulo(x.sku);
+  }
+  lecturas = p.lecturas || 0; t0 = p.t0 ?? null; tUlt = p.tUlt ?? null; tActivo = p.tActivo || 0; pausa = p.pausa || 0;
+}
+document.addEventListener('visibilitychange', () => { if (document.hidden && timerGrabar) grabarPasadaYa(); });
 
 // ── Pintar (a lo sumo ~5 veces por segundo, aunque lleguen cientos de lecturas) ──
 let pintando = false;
@@ -250,7 +276,7 @@ function pintarYa() {
   $('k-art').textContent = porSku.size;
   $('k-otras').textContent = otras.length;
   $('guardar-tx').textContent = unidades ? `Guardar ${unidades} en ${lugar}` : 'Guardar pasada';
-  const seg = t0 === null ? 0 : Math.round((tUlt - t0) / 1000);
+  const seg = Math.round(tActivo / 1000);
   $('k-tiempo').textContent = t0 === null ? '' : (seg < 60 ? seg + ' s' : Math.floor(seg / 60) + ' min ' + (seg % 60) + ' s');
 
   const filas = [...porSku.entries()].sort((a, b) => b[1].t - a[1].t);   // lo último encontrado, arriba
@@ -265,7 +291,18 @@ function pintarYa() {
   $('otras-box').hidden = !otras.length;
   $('otras-tit').textContent = otras.length + (otras.length === 1 ? ' etiqueta que no es un artículo' : ' etiquetas que no son artículos') + ' (de fábrica, de prueba o sin grabar)';
   $('otras').textContent = otras.slice(0, 200).map(x => x.sku || x.epc).join(' · ');
+  pintarViejo();
 }
+
+// Aviso cuando lo leído quedó de antes, para no mezclar lugares en la misma pasada
+function pintarViejo() {
+  const quieto = t0 === null ? 0 : Date.now() - tUlt;
+  const tx = pausa ? `Esta pasada junta lo leído hace ${fmtMin(pausa)} con lo de ahora. Si es otro lugar, borrala y volvé a leer.`
+    : etiquetas.size && !appEstado.leyendo && quieto > PAUSA_LARGA ? `Lo leído hace ${fmtMin(Math.floor(quieto / 60000))} todavía no se guardó. Guardalo antes de pasar a otro lugar.`
+    : '';
+  $('viejo').hidden = !tx; $('viejo').textContent = tx;
+}
+setInterval(pintarViejo, 30000);
 
 function pintarEstado() {
   const b = $('boton'), e = $('estado');
@@ -304,9 +341,9 @@ $('boton').addEventListener('click', () => {
   if (AdornoLector.leyendo()) AdornoLector.parar(); else AdornoLector.iniciar();
 });
 function limpiar() {
-  etiquetas = new Map(); lecturas = 0; t0 = tUlt = null; yaPintados = new Set();
+  etiquetas = new Map(); lecturas = 0; t0 = tUlt = null; tActivo = pausa = 0; yaPintados = new Set();
   if (APP) try { AdornoLector.olvidar(); } catch (_) {}
-  pintarYa();
+  grabarPasadaYa(); pintarYa();
 }
 // Borrar se confirma tocando dos veces (sin confirm(), que un toque de más aceptaría solo)
 $('b-borrar').addEventListener('click', () => {
@@ -324,7 +361,7 @@ $('b-guardar').addEventListener('click', async () => {
   const fila = {
     modo: 'prueba', lugar, nota: $('nota').value.trim() || null,
     dispositivo: APP ? 'C72 app ' + (appEstado.app || '') : null,
-    total_lecturas: lecturas, unicos: etiquetas.size, duracion_ms: t0 === null ? null : tUlt - t0,
+    total_lecturas: lecturas, unicos: etiquetas.size, duracion_ms: t0 === null ? null : tActivo,
     codigos: [...etiquetas.values()].map(x => { const o = { c: x.epc + x.tid, n: x.n, t: x.t }; if (x.sku) o.txt = x.sku; if (x.tid) o.tid = x.tid; return o; })
   };
   if ($('local').value) fila.local = $('local').value;
@@ -340,13 +377,26 @@ async function cargarPasadas() {
   if (!usuario) return;
   const { data, error } = await sb.from('stock_rfid_lecturas').select('id, creado_at, local, lugar, nota, unicos, codigos')
     .eq('creado_por', usuario.id).order('creado_at', { ascending: false }).limit(10);
+  if (error) { $('pasadas').innerHTML = `<li class="vacio">${escHtml(error.message)}</li>`; return; }
+  pasadas = data;
+  for (const r of data) for (const c of r.codigos || []) if (c.txt && !articulos.has(c.txt)) pedirArticulo(c.txt);
+  pintarPasadas();
+}
+// Se cuenta igual que arriba: unidades = etiquetas distintas de artículos del sistema (sin las de prueba o de fábrica)
+let pasadas = null;
+function pintarPasadas() {
+  if (!pasadas) return;
   const ul = $('pasadas');
-  if (error) { ul.innerHTML = `<li class="vacio">${escHtml(error.message)}</li>`; return; }
-  if (!data.length) { ul.innerHTML = '<li class="vacio">Todavía no guardaste ninguna.</li>'; return; }
-  ul.innerHTML = data.map(r => {
-    const skus = new Set((r.codigos || []).filter(c => c.txt).map(c => c.txt));
+  if (!pasadas.length) { ul.innerHTML = '<li class="vacio">Todavía no guardaste ninguna.</li>'; return; }
+  ul.innerHTML = pasadas.map(r => {
+    let u = 0, buscando = false; const arts = new Set();
+    for (const c of r.codigos || []) {
+      const a = c.txt ? articulos.get(c.txt) : false;
+      if (a) { u++; arts.add(c.txt); } else if (a === null) buscando = true;
+    }
     return `<li><div class="txt"><div class="desc">${escHtml(r.lugar || 'sin lugar')}${r.nota ? ' · ' + escHtml(r.nota) : ''}</div>
-      <div class="sku">#${r.id} · ${fmtFecha(r.creado_at)} · ${escHtml(r.local || '')} · ${skus.size} artículos</div></div><span class="n">${r.unicos}</span></li>`;
+      <div class="sku">#${r.id} · ${fmtFecha(r.creado_at)} · ${escHtml(r.local || '')} · ${arts.size} ${arts.size === 1 ? 'artículo' : 'artículos'} · ${r.unicos} etiquetas</div></div>
+      <span class="n">${buscando ? '…' : u + ' unid.'}</span></li>`;
   }).join('');
 }
 
@@ -379,6 +429,7 @@ sb.auth.onAuthStateChange((_ev, session) => ponerUsuario(session));
   $('sin-app').hidden = APP;
   if (APP) { try { appEstado = JSON.parse(AdornoLector.info()); } catch (_) {} $('pie').innerHTML += ' · app ' + escHtml(appEstado.app || ''); }
   pintarEstado();
+  recuperarPasada();
   ponerUsuario((await sb.auth.getSession()).data.session);
   pintarYa();
 })();
