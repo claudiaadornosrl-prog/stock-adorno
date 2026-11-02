@@ -60,6 +60,11 @@ h2 { font-size: 14px; margin: 0 0 8px; color: var(--muted); font-weight: 600; di
 .vacio { color: var(--muted); font-size: 13px; text-align: center; padding: 10px; }
 .ultimo { font-family: ui-monospace, monospace; font-size: 11px; color: var(--muted); word-break: break-all; margin-top: 8px; }
 .aviso { background: #fef3c7; color: #92400e; border-radius: 10px; padding: 10px 12px; font-size: 13.5px; margin-bottom: 12px; }
+.lista .u { font-weight: 700; color: var(--primary-dark); font-size: 16px; white-space: nowrap; }
+.login { display: grid; gap: 8px; }
+.login input { font: inherit; font-size: 15px; padding: 9px 10px; border: 1px solid var(--border); border-radius: 8px; }
+.login button { font: inherit; font-size: 15px; font-weight: 700; padding: 10px; border: 0; border-radius: 8px; background: var(--primary); color: #fff; }
+.login .err { color: var(--no); font-size: 13px; min-height: 1em; }
 #toast { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); background: #111827; color: #fff; padding: 9px 14px;
   border-radius: 10px; font-size: 14px; opacity: 0; transition: opacity .2s; pointer-events: none; max-width: 90vw; }
 #toast.on { opacity: .95; }
@@ -73,6 +78,15 @@ h2 { font-size: 14px; margin: 0 0 8px; color: var(--muted); font-weight: 600; di
 
 <main>
   <div class="aviso" id="sin-sesion" hidden>⚠ <b>No entraste con tu usuario</b>: así no se pueden guardar las pasadas. Abrí el <a href="./index.html" target="_blank">módulo Stock</a>, entrá, y volvé a esta pestaña (lo leído no se pierde). Contar funciona igual.</div>
+
+  <!-- Adentro de la app de la C72 se entra acá mismo (misma sesión que Stock) -->
+  <div class="card login" id="login-app" hidden>
+    <h2 style="margin:0">Entrá con tu usuario de Stock para poder guardar</h2>
+    <input type="email" id="l-email" placeholder="Email" autocomplete="username">
+    <input type="password" id="l-pass" placeholder="Contraseña" autocomplete="current-password">
+    <button id="l-entrar">Entrar</button>
+    <div class="err" id="l-err"></div>
+  </div>
 
   <div class="card">
     <div class="fila">
@@ -108,6 +122,11 @@ h2 { font-size: 14px; margin: 0 0 8px; color: var(--muted); font-weight: 600; di
     <ul class="lista" id="faltan"></ul>
   </div>
 
+  <div class="card" id="card-art" hidden>
+    <h2>Por artículo <span style="font-weight:400">· unidades = etiquetas distintas con ese SKU grabado</span></h2>
+    <ul class="lista" id="por-art"></ul>
+  </div>
+
   <div class="card">
     <h2>Leídas en esta pasada <span style="font-weight:400">· tocá una para ponerle nombre</span></h2>
     <ul class="lista" id="leidas"><li class="vacio">Todavía no se leyó nada.</li></ul>
@@ -140,6 +159,9 @@ let codigos = new Map();      // crudo -> {c, n, t, txt, tid}
 let total = 0, t0 = null, tUlt = null, cortados = 0;
 let nombres = leerLS('rfid-nombres', {});   // crudo o EPC -> nombre (para la prueba por material)
 let usuario = null;
+// Adentro de la app de la C72 (lector-c72) existe el objeto AdornoLector: se lee directo del módulo UHF
+const APP = !!window.AdornoLector;
+let appEstado = {};
 
 // EPC en hex → texto, si todos los bytes son legibles (nuestras etiquetas: "PRUEBA00005A", SKU…)
 function hexATexto(h) {
@@ -169,18 +191,33 @@ function interpretar(crudo) {
 function procesarLinea(linea) {
   linea = linea.trim();
   if (!linea) return;
+  const r = interpretar(linea);
+  if (r.tipo === 'cortado') { cortados++; $('ultimo').textContent = 'Descartado (llegó cortado): ' + linea + ' · descartados: ' + cortados; return; }
+  registrar(r);
+  $('ultimo').textContent = 'Último recibido: ' + linea;
+  pintar();
+}
+function registrar(r) {
   const ahora = Date.now();
   if (t0 === null) { t0 = ahora; pedirPantallaPrendida(); }
   tUlt = ahora;
-  const r = interpretar(linea);
-  if (r.tipo === 'cortado') { cortados++; $('ultimo').textContent = 'Descartado (llegó cortado): ' + linea + ' · descartados: ' + cortados; return; }
   total++;
   const prev = codigos.get(r.c);
   if (prev) prev.n++;
   else codigos.set(r.c, { c: r.c, n: 1, t: ahora - t0, txt: r.txt || null, tid: r.tid || null, tipo: r.tipo, epc: r.epc || null });
-  $('ultimo').textContent = 'Último recibido: ' + linea;
-  pintar();
 }
+
+// ── App de la C72: la app manda lo leído en paquetes cada 150 ms ({e: EPC, t: TID, r: RSSI}) ──
+window.adornoLector = {
+  tags(arr) {
+    for (const x of arr) {
+      const e = String(x.e || '').toUpperCase(), t = String(x.t || '').toUpperCase();
+      if (e) registrar({ c: e + t, epc: e, tid: t || null, tipo: 'rfid', txt: hexATexto(e) });
+    }
+    if (arr.length) { $('ultimo').textContent = 'Último leído: ' + (hexATexto(arr[arr.length - 1].e) || arr[arr.length - 1].e); pintar(); }
+  },
+  estado(o) { appEstado = o || {}; pintarEstado(); }
+};
 
 // ── Captura: la C72 "tipea" cada código + Enter en el campo con foco ──
 const cap = $('cap');
@@ -194,16 +231,16 @@ cap.addEventListener('input', () => {
   clearTimeout(ocioso);
   if (resto) ocioso = setTimeout(() => { if (cap.value.trim().length >= 8) { const v = cap.value; cap.value = ''; procesarLinea(v); } }, 400);
 });
-function escuchar() { cap.focus({ preventScroll: true }); pintarEstado(); }
+function escuchar() { if (!APP) cap.focus({ preventScroll: true }); pintarEstado(); }
 // La C72 tipea código + Enter: si el foco quedó en un botón, ese Enter lo "apretaría" (¡incluso el tachito!).
 // Toda tecla que llegue fuera del recuadro, de la nota o del local se frena y el foco vuelve al recuadro.
 const enCampo = () => [cap, $('nota'), $('local')].includes(document.activeElement);
 document.addEventListener('keydown', e => {
-  if (enCampo()) return;
+  if (APP || enCampo()) return;   // en la app el gatillo lo toma la app, no llega como teclas
   e.preventDefault(); e.stopPropagation();
   escuchar();
 }, true);
-setInterval(() => { if (document.visibilityState === 'visible' && !enCampo()) escuchar(); }, 800);
+setInterval(() => { if (!APP && document.visibilityState === 'visible' && !enCampo()) escuchar(); }, 800);
 // Las acciones que borran se confirman tocando dos veces (sin confirm(): un Enter de la C72 lo aceptaría solo)
 function dobleToque(btn, aviso, accion) {
   if (btn.dataset.armado === '1') { delete btn.dataset.armado; btn.classList.remove('armado'); accion(); return; }
@@ -211,6 +248,15 @@ function dobleToque(btn, aviso, accion) {
   setTimeout(() => { delete btn.dataset.armado; btn.classList.remove('armado'); }, 3000);
 }
 function pintarEstado() {
+  if (APP) {
+    const on = !!appEstado.leyendo;
+    $('estado').className = 'estado ' + (on ? 'on' : 'off');
+    $('estado-tx').textContent = appEstado.error ? '⚠ ' + appEstado.error
+      : !appEstado.listo ? 'Preparando el lector…'
+      : on ? 'Leyendo · soltá el gatillo (o tocá acá) para parar'
+      : 'Listo · mantené apretado el gatillo (o tocá acá) para leer';
+    return;
+  }
   const on = document.activeElement === cap;
   $('estado').className = 'estado ' + (on ? 'on' : 'off');
   $('estado-tx').textContent = on ? 'Leyendo · mantené apretado el gatillo frente a las etiquetas' : 'En pausa · tocá acá para empezar a leer';
@@ -219,7 +265,10 @@ cap.addEventListener('focus', pintarEstado);
 cap.addEventListener('blur', pintarEstado);
 window.addEventListener('focus', pintarEstado);
 window.addEventListener('blur', pintarEstado);
-$('estado').addEventListener('click', escuchar);
+$('estado').addEventListener('click', () => {
+  if (!APP) { escuchar(); return; }
+  if (AdornoLector.leyendo()) AdornoLector.parar(); else AdornoLector.iniciar();
+});
 // Al terminar de escribir la nota (Enter o salir del campo) se vuelve a escuchar
 $('nota').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); escuchar(); } });
 $('local').value = leerLS('rfid-local', '');
@@ -251,8 +300,16 @@ function pintarYa() {
     const chip = x.tipo === 'otro' ? '<span class="chip otro">código de barras</span>'
       : x.txt ? '<span class="chip">grabada</span>' : '<span class="chip fab">de fábrica</span>';
     const titulo = nom ? `<span class="nom">${escHtml(nom)}</span> ` : (x.txt ? `<span class="txt">${escHtml(x.txt)}</span> ` : '');
-    return `<li data-c="${escHtml(x.c)}"><div class="cod">${titulo}<small>${escHtml(x.tipo === 'otro' ? '' : '…' + (x.epc || x.c).slice(-8))}${x.tid ? ' · TID …' + escHtml(x.tid.slice(-6)) : ''}</small></div>${chip}<span class="n">×${x.n}</span></li>`;
+    // TID de Impinj: E28011B02000 + 12 hex que cambian de chip a chip (los últimos 6 solos se parecían todos)
+    return `<li data-c="${escHtml(x.c)}"><div class="cod">${titulo}<small>${escHtml(x.tipo === 'otro' ? '' : '…' + (x.epc || x.c).slice(-8))}${x.tid ? ' · TID …' + escHtml(x.tid.slice(-12)) : ''}</small></div>${chip}<span class="n">×${x.n}</span></li>`;
   }).join('') + (items.length > 400 ? `<li class="vacio">… y ${items.length - 400} más</li>` : '');
+
+  // Por artículo: etiquetas distintas (EPC+TID) con el mismo SKU grabado = unidades de ese artículo
+  const porArt = new Map();
+  items.forEach(x => { if (x.tipo === 'rfid' && x.txt) { const a = porArt.get(x.txt) || { u: 0, n: 0 }; a.u++; a.n += x.n; porArt.set(x.txt, a); } });
+  $('card-art').hidden = !porArt.size;
+  $('por-art').innerHTML = [...porArt.entries()].sort((a, b) => b[1].u - a[1].u || a[0].localeCompare(b[0]))
+    .map(([sku, a]) => `<li><div class="cod"><span class="txt">${escHtml(sku)}</span> <small>${a.n} lecturas</small></div><span class="u">${a.u} u.</span></li>`).join('');
 
   // Etiquetas con nombre que no aparecieron (prueba por material)
   const vistos = new Set(); items.forEach(x => { vistos.add(x.c); if (x.epc) vistos.add(x.epc); });
@@ -273,7 +330,11 @@ $('leidas').addEventListener('click', e => {
 });
 
 // ── Acciones ─────────────────────────────────────────────────────────
-function limpiar() { codigos = new Map(); total = 0; t0 = tUlt = null; $('ultimo').textContent = ''; try { lock?.release(); } catch (_) {} lock = null; pintarYa(); }
+function limpiar() {
+  codigos = new Map(); total = 0; t0 = tUlt = null; $('ultimo').textContent = ''; try { lock?.release(); } catch (_) {} lock = null;
+  if (APP) try { AdornoLector.olvidar(); } catch (_) {}   // que la app vuelva a pitar con cada etiqueta nueva
+  pintarYa();
+}
 $('b-nueva').addEventListener('click', () => {
   if (!codigos.size) { limpiar(); escuchar(); return; }
   dobleToque($('b-nueva'), 'Tocá de nuevo para borrar lo leído sin guardarlo', () => { limpiar(); toast('Pasada nueva'); });
@@ -287,19 +348,21 @@ $('b-olvidar').addEventListener('click', () => {
 });
 $('b-guardar').addEventListener('click', async () => {
   if (!codigos.size) {
-    alert('Todavía no se leyó nada en esta pasada.\n\nAl apretar el gatillo tienen que aparecer códigos en el recuadro punteado. Si no aparece nada, la C72 no está escribiendo en Chrome: revisá en el KeyboardEmulator el "Process mode".');
+    alert(APP ? 'Todavía no se leyó nada en esta pasada.\n\nMantené apretado el gatillo frente a las etiquetas.'
+      : 'Todavía no se leyó nada en esta pasada.\n\nAl apretar el gatillo tienen que aparecer códigos en el recuadro punteado. Si no aparece nada, la C72 no está escribiendo en Chrome: revisá en el KeyboardEmulator el "Process mode".');
     escuchar(); return;
   }
   if (!usuario) ponerUsuario((await sb.auth.getSession()).data.session);
   if (!usuario) {
-    alert('Todavía no entraste con tu usuario en este equipo, así que no se puede guardar.\n\nLo leído NO se pierde: abrí el módulo Stock en otra pestaña, entrá, y volvé a esta pestaña para guardar.');
+    alert(APP ? 'Todavía no entraste con tu usuario, así que no se puede guardar.\n\nLo leído NO se pierde: entrá en el recuadro de arriba y volvé a tocar guardar.'
+      : 'Todavía no entraste con tu usuario en este equipo, así que no se puede guardar.\n\nLo leído NO se pierde: abrí el módulo Stock en otra pestaña, entrá, y volvé a esta pestaña para guardar.');
     return;
   }
   const btn = $('b-guardar'); btn.disabled = true;
   const fila = {
     nota: $('nota').value.trim() || null,
     modo: 'prueba',
-    dispositivo: (navigator.userAgent.match(/Android[^;)]*;\s*([^;)]+)/) || [])[1] || navigator.platform || null,
+    dispositivo: APP ? 'C72 app ' + (appEstado.app || '') : (navigator.userAgent.match(/Android[^;)]*;\s*([^;)]+)/) || [])[1] || navigator.platform || null,
     total_lecturas: total,
     unicos: codigos.size,
     duracion_ms: t0 === null ? null : tUlt - t0,
@@ -344,9 +407,25 @@ $('guardadas').addEventListener('click', async e => {
 function ponerUsuario(session) {
   const antes = usuario?.id;
   usuario = session?.user || null;
-  $('quien').innerHTML = usuario ? escHtml(usuario.email) : '<a href="./index.html" target="_blank">Entrar</a>';
-  $('sin-sesion').hidden = !!usuario;
+  $('quien').innerHTML = usuario ? escHtml(usuario.email) : APP ? 'sin usuario' : '<a href="./index.html" target="_blank">Entrar</a>';
+  $('sin-sesion').hidden = APP || !!usuario;
+  $('login-app').hidden = !APP || !!usuario;
   if (usuario && usuario.id !== antes) cargarGuardadas();
+}
+// Ingreso adentro de la app (la sesión queda guardada igual que en el módulo Stock: misma clave 'adorno-auth')
+$('l-entrar').addEventListener('click', async () => {
+  const email = $('l-email').value.trim(), pass = $('l-pass').value;
+  $('l-err').textContent = '';
+  if (!email || !pass) { $('l-err').textContent = 'Completá email y contraseña.'; return; }
+  $('l-entrar').disabled = true;
+  const { error } = await sb.auth.signInWithPassword({ email, password: pass });
+  $('l-entrar').disabled = false;
+  if (error) { $('l-err').textContent = 'Email o contraseña incorrectos.'; return; }
+  $('l-pass').value = '';
+});
+if (APP) {
+  cap.hidden = true;
+  try { appEstado = JSON.parse(AdornoLector.info()); } catch (_) {}
 }
 // Si entra al módulo Stock en otra pestaña, al volver acá la sesión se toma sola (sin recargar y sin perder lo leído)
 sb.auth.onAuthStateChange((_ev, session) => ponerUsuario(session));
