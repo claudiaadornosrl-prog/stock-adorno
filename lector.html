@@ -27,16 +27,17 @@ main { padding: 12px; max-width: 720px; margin: 0 auto; }
 .fila { display: flex; gap: 8px; align-items: center; margin-top: 10px; }
 .fila select, .fila input { font: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 9px; background: #fff; min-width: 0; }
 .fila input { flex: 1; }
-/* Lectura */
+/* Lectura: queda fija arriba mientras se baja por la lista */
+.fija { position: sticky; top: var(--alto-header, 44px); z-index: 4; box-shadow: 0 6px 14px rgba(15,23,42,.08); }
 .lectura { display: flex; align-items: center; gap: 14px; }
-.boton { flex: none; width: 108px; height: 108px; border-radius: 50%; border: 0; background: var(--primary); color: #fff; font: inherit;
+.boton { flex: none; width: 96px; height: 96px; border-radius: 50%; border: 0; background: var(--primary); color: #fff; font: inherit;
   font-size: 17px; font-weight: 700; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; }
 .boton svg { width: 36px; height: 36px; }
 .boton.leyendo { background: var(--ok); animation: lat 1.1s infinite; }
 .boton.espera { background: #94a3b8; }
 @keyframes lat { 50% { box-shadow: 0 0 0 12px rgba(22,101,52,.15); } }
 .numeros { flex: 1; min-width: 0; }
-.unidades b { font-size: 56px; line-height: 1; color: var(--primary-dark); display: block; }
+.unidades b { font-size: 50px; line-height: 1; color: var(--primary-dark); display: block; }
 .unidades span { font-size: 14px; color: var(--muted); }
 .chicos { display: flex; gap: 14px; margin-top: 6px; font-size: 13px; color: var(--muted); flex-wrap: wrap; }
 .chicos b { color: var(--text); }
@@ -45,23 +46,23 @@ main { padding: 12px; max-width: 720px; margin: 0 auto; }
 /* Lista */
 h2 { font-size: 14px; margin: 0 0 6px; color: var(--muted); font-weight: 600; }
 .lista { list-style: none; margin: 0; padding: 0; }
-.lista li { display: flex; align-items: center; gap: 10px; padding: 8px 2px; border-top: 1px solid var(--border); }
+.lista li { display: flex; align-items: center; gap: 10px; padding: 6px 2px; border-top: 1px solid var(--border); }
 .lista li:first-child { border-top: 0; }
 .lista li.nuevo { animation: brillo 1.2s; }
 @keyframes brillo { from { background: #e8f0fe; } to { background: transparent; } }
-.foto { width: 46px; height: 46px; border-radius: 8px; background: #f1f5f9; flex: none; object-fit: cover; display: flex; align-items: center; justify-content: center; color: #94a3b8; }
+.foto { width: 40px; height: 40px; border-radius: 8px; background: #f1f5f9; flex: none; object-fit: cover; display: flex; align-items: center; justify-content: center; color: #94a3b8; }
 .foto svg { width: 22px; height: 22px; }
 .txt { flex: 1; min-width: 0; }
-.desc { font-size: 14.5px; font-weight: 600; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.desc { font-size: 14px; font-weight: 600; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .sku { font-size: 12px; color: var(--muted); }
 .cant { font-size: 24px; font-weight: 700; color: var(--primary-dark); min-width: 44px; text-align: right; }
 .vacio { color: var(--muted); font-size: 14px; text-align: center; padding: 14px 6px; }
 details { margin-top: 4px; }
 summary { font-size: 13.5px; color: var(--muted); cursor: pointer; padding: 6px 0; }
 .codigos { font-family: ui-monospace, monospace; font-size: 11.5px; color: var(--muted); word-break: break-all; }
-/* Acciones */
-.acciones { display: flex; gap: 10px; }
-.acciones button { flex: 1; font: inherit; font-size: 16px; font-weight: 700; padding: 13px; border-radius: 12px; border: 0; display: flex; align-items: center; justify-content: center; gap: 8px; }
+/* Acciones (dentro de la tarjeta fija) */
+.acciones { display: flex; gap: 10px; margin-top: 10px; }
+.acciones button { flex: 1; font: inherit; font-size: 16px; font-weight: 700; padding: 11px; border-radius: 12px; border: 0; display: flex; align-items: center; justify-content: center; gap: 8px; }
 .acciones svg { width: 20px; height: 20px; }
 .guardar { background: var(--primary); color: #fff; }
 .borrar { background: #fff; color: var(--muted); border: 1px solid var(--border) !important; flex: 0 0 auto !important; }
@@ -105,7 +106,7 @@ button:disabled { opacity: .5; }
     </div>
   </div>
 
-  <div class="card">
+  <div class="card fija">
     <div class="lectura">
       <button class="boton espera" id="boton" aria-label="Leer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12a7 7 0 0 1 14 0"/><path d="M8.5 12a3.5 3.5 0 0 1 7 0"/><circle cx="12" cy="12" r="1"/><path d="M12 13v8"/></svg><span id="boton-tx">Leer</span></button>
       <div class="numeros">
@@ -114,6 +115,10 @@ button:disabled { opacity: .5; }
       </div>
     </div>
     <div class="estado" id="estado">Preparando el lector…</div>
+    <div class="acciones">
+      <button class="borrar" id="b-borrar" title="Borrar lo leído sin guardar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"/><path d="M10 11v6M14 11v6"/><path d="M6 7l1 13h10l1-13"/><path d="M9 7V4h6v3"/></svg></button>
+      <button class="guardar" id="b-guardar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3h11l3 3v15H5z"/><path d="M8 3v5h8V3"/><path d="M8 21v-7h8v7"/></svg><span id="guardar-tx">Guardar pasada</span></button>
+    </div>
   </div>
 
   <div class="card">
@@ -123,11 +128,6 @@ button:disabled { opacity: .5; }
       <summary id="otras-tit"></summary>
       <div class="codigos" id="otras"></div>
     </details>
-  </div>
-
-  <div class="acciones card" style="padding:10px">
-    <button class="borrar" id="b-borrar" title="Borrar lo leído sin guardar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"/><path d="M10 11v6M14 11v6"/><path d="M6 7l1 13h10l1-13"/><path d="M9 7V4h6v3"/></svg></button>
-    <button class="guardar" id="b-guardar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3h11l3 3v15H5z"/><path d="M8 3v5h8V3"/><path d="M8 21v-7h8v7"/></svg>Guardar pasada</button>
   </div>
 
   <div class="card">
@@ -248,6 +248,7 @@ function pintarYa() {
   $('k-unid').textContent = unidades;
   $('k-art').textContent = porSku.size;
   $('k-otras').textContent = otras.length;
+  $('guardar-tx').textContent = unidades ? `Guardar ${unidades} en ${lugar}` : 'Guardar pasada';
   const seg = t0 === null ? 0 : Math.round((tUlt - t0) / 1000);
   $('k-tiempo').textContent = t0 === null ? '' : (seg < 60 ? seg + ' s' : Math.floor(seg / 60) + ' min ' + (seg % 60) + ' s');
 
@@ -256,7 +257,7 @@ function pintarYa() {
     const a = articulos.get(sku);
     const nuevo = !yaPintados.has(sku); yaPintados.add(sku);
     return `<li class="${nuevo ? 'nuevo' : ''}">${a && a.foto ? `<img class="foto" src="${escHtml(a.foto)}" loading="lazy" alt="">` : `<div class="foto">${ICONO_CAJA}</div>`}
-      <div class="txt"><div class="desc">${escHtml(a ? a.desc : (usuario ? 'Buscando…' : sku))}</div><div class="sku">${escHtml(sku)}</div></div>
+      <div class="txt"><div class="desc">${escHtml(a ? a.desc : sku)}</div><div class="sku">${a ? escHtml(sku) : usuario ? 'buscando el nombre…' : 'entrá con tu usuario para ver el nombre'}</div></div>
       <div class="cant">${g.u}</div></li>`;
   }).join('') : '<li class="vacio">Mantené apretado el gatillo y pasá la C72 despacio por el estante.</li>';
 
@@ -290,7 +291,7 @@ $('lugares').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
   let l = b.dataset.l;
   if (!l) { l = (prompt('¿Qué lugar es? (ej.: cajones del fondo)') || '').trim(); if (!l) return; }
-  lugar = l; grabarLS('lector-lugar', lugar); pintarLugares();
+  lugar = l; grabarLS('lector-lugar', lugar); pintarLugares(); pintarYa();
 });
 pintarLugares();
 $('local').value = leerLS('lector-local', '');
@@ -373,6 +374,7 @@ $('l-entrar').addEventListener('click', async () => {
 });
 sb.auth.onAuthStateChange((_ev, session) => ponerUsuario(session));
 (async () => {
+  document.documentElement.style.setProperty('--alto-header', document.querySelector('.header').offsetHeight + 'px');
   $('sin-app').hidden = APP;
   if (APP) { try { appEstado = JSON.parse(AdornoLector.info()); } catch (_) {} $('pie').innerHTML += ' · app ' + escHtml(appEstado.app || ''); }
   pintarEstado();
