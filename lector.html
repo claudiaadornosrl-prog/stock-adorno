@@ -45,6 +45,10 @@ main { padding: 12px; max-width: 720px; margin: 0 auto; }
 .chicos b { color: var(--text); }
 .estado { font-size: 13px; color: var(--muted); margin-top: 10px; min-height: 1.2em; }
 .estado.error { color: var(--no); }
+.estado.quieto { color: var(--ok); font-weight: 700; }
+.comp-res { font-size: 15px; font-weight: 700; margin-bottom: 4px; }
+.comp-res.ok { color: var(--ok); }
+.comp-res.falta { color: var(--warn); }
 .fija .aviso { margin: 10px 0 0; font-size: 13.5px; }
 /* Lista */
 h2 { font-size: 14px; margin: 0 0 6px; color: var(--muted); font-weight: 600; }
@@ -125,6 +129,12 @@ button:disabled { opacity: .5; }
     </div>
   </div>
 
+  <div class="card" id="comp" hidden>
+    <h2 id="comp-tit"></h2>
+    <div class="comp-res" id="comp-res"></div>
+    <ul class="lista" id="comp-faltan"></ul>
+  </div>
+
   <div class="card">
     <h2 id="tit-lista">Leído en este lugar</h2>
     <ul class="lista" id="lista"><li class="vacio">Mantené apretado el gatillo y pasá la C72 despacio por el estante.</li></ul>
@@ -169,6 +179,8 @@ let etiquetas = new Map();   // EPC+TID → {epc, tid, sku, n, t}
 // tActivo: tiempo leyendo, sin las pausas entre gatillazos · pausa: minutos de la pausa larga en el medio de la pasada (0 = ninguna)
 let lecturas = 0, t0 = null, tUlt = null, tActivo = 0, pausa = 0, appEstado = {}, usuario = null;
 const PAUSA_LARGA = 5 * 60000;   // más que esto sin leer: probablemente ya es otro lugar
+const QUIETO = 3000;             // leyendo y sin etiquetas nuevas este rato: ya se leyó lo que había al alcance
+let tNueva = 0, tArranque = 0;   // última etiqueta nueva · cuándo se apretó el gatillo
 const fmtMin = m => m < 60 ? m + ' min' : Math.floor(m / 60) + ' h ' + (m % 60) + ' min';
 const articulos = new Map(); // SKU → {desc, foto} (null mientras se busca; false = no es un artículo)
 const cacheArt = leerLS('lector-articulos', {});   // para que los nombres aparezcan al toque la próxima vez
@@ -204,11 +216,15 @@ window.adornoLector = {
       if (prev) { prev.n++; continue; }
       const sku = hexATexto(epc);
       etiquetas.set(k, { epc, tid, sku, n: 1, t: tActivo });
+      tNueva = ahora;
       if (sku && !articulos.has(sku)) pedirArticulo(sku);
     }
     pintar(); grabarPasada();
   },
-  estado(o) { appEstado = o || {}; pintarEstado(); }
+  estado(o) {
+    if (o && o.leyendo && !appEstado.leyendo) tArranque = Date.now();
+    appEstado = o || {}; pintarEstado();
+  }
 };
 
 // ── Nombres y fotos de los artículos (de a tandas) ───────────────────
@@ -292,7 +308,36 @@ function pintarYa() {
   $('otras-box').hidden = !otras.length;
   $('otras-tit').textContent = otras.length + (otras.length === 1 ? ' etiqueta que no es un artículo' : ' etiquetas que no son artículos') + ' (de fábrica, de prueba o sin grabar)';
   $('otras').textContent = otras.slice(0, 200).map(x => x.sku || x.epc).join(' · ');
-  pintarViejo();
+  pintarViejo(); pintarComparacion();
+}
+
+// ── Comparación con tu pasada anterior del mismo lugar: qué falta, por nombre ──
+// (sirve para ver si se leyó todo: se lee dos veces lo mismo y tiene que dar igual)
+function pintarComparacion() {
+  const ant = (pasadas || []).find(r => r.lugar === lugar && (r.codigos || []).some(c => c.tid));
+  $('comp').hidden = !ant || !etiquetas.size;
+  if ($('comp').hidden) return;
+  const ahora = new Set([...etiquetas.values()].map(x => x.tid || x.epc));
+  const antes = new Set(), grupos = new Map();   // nombre → {antes, faltan, art}
+  let faltan = 0;
+  for (const c of ant.codigos) {
+    const k = c.tid || c.c; antes.add(k);
+    const a = c.txt ? articulos.get(c.txt) : false;
+    const nombre = a ? a.desc : c.txt || 'En blanco o de fábrica';
+    const g = grupos.get(nombre) || { antes: 0, faltan: 0, art: !!a };
+    g.antes++;
+    if (!ahora.has(k)) { g.faltan++; faltan++; }
+    grupos.set(nombre, g);
+  }
+  const nuevas = [...ahora].filter(k => !antes.has(k)).length;
+  $('comp-tit').textContent = `Comparado con tu pasada anterior en ${ant.lugar} (#${ant.id}, ${fmtFecha(ant.creado_at)})`;
+  const res = $('comp-res');
+  res.className = 'comp-res ' + (faltan ? 'falta' : 'ok');
+  res.textContent = (faltan ? `${faltan === 1 ? 'Falta 1' : 'Faltan ' + faltan} de las ${antes.size} etiquetas de esa pasada` : `✓ Están las ${antes.size} etiquetas de esa pasada`)
+    + (nuevas ? ` · ${nuevas} que antes no ${nuevas === 1 ? 'estaba' : 'estaban'}` : '');
+  const filas = [...grupos.entries()].filter(([, g]) => g.faltan).sort((a, b) => b[1].art - a[1].art || a[0].localeCompare(b[0]));
+  $('comp-faltan').innerHTML = filas.map(([nombre, g]) => `<li><div class="txt"><div class="desc">${escHtml(nombre)}</div>
+    <div class="sku">${g.faltan === 1 ? 'falta 1' : 'faltan ' + g.faltan} de ${g.antes}</div></div><div class="cant">−${g.faltan}</div></li>`).join('');
 }
 
 // Aviso cuando lo leído quedó de antes, para no mezclar lugares en la misma pasada
@@ -310,13 +355,17 @@ function pintarEstado() {
   const leyendo = !!appEstado.leyendo, listo = !!appEstado.listo;
   b.className = 'boton ' + (leyendo ? 'leyendo' : listo ? '' : 'espera');
   $('boton-tx').textContent = leyendo ? 'Parar' : 'Leer';
+  const quieto = APP && listo && leyendo && etiquetas.size > 0 && Date.now() - Math.max(tNueva, tArranque) >= QUIETO;
   e.classList.toggle('error', !!appEstado.error);
+  e.classList.toggle('quieto', quieto && !appEstado.error);
   e.textContent = !APP ? 'Sin lector: abrí esta pantalla desde la app Lector Adorno de la C72.'
     : appEstado.error ? appEstado.error
     : !listo ? 'Preparando el lector…'
+    : quieto ? '✓ No aparecen más etiquetas nuevas. Si ya pasaste por todo el lugar, soltá el gatillo.'
     : leyendo ? 'Leyendo… soltá el gatillo para parar'
     : 'Mantené apretado el gatillo (o tocá Leer) y pasá la C72 despacio';
 }
+setInterval(() => { if (appEstado.leyendo) pintarEstado(); }, 500);
 
 // ── Lugar, local y nota ──────────────────────────────────────────────
 const LUGARES = ['Vidriera', 'Exhibición', 'Mostrador', 'Góndola', 'Depósito', 'Depósito de arriba', 'Baulera'];
@@ -399,6 +448,7 @@ function pintarPasadas() {
       <div class="sku">#${r.id} · ${fmtFecha(r.creado_at)} · ${escHtml(r.local || '')} · ${arts.size} ${arts.size === 1 ? 'artículo' : 'artículos'} · ${r.unicos} etiquetas</div></div>
       <span class="n">${buscando ? '…' : u + ' unid.'}</span></li>`;
   }).join('');
+  pintarComparacion();
 }
 
 // ── Sesión (misma clave que Stock: si ya entraste en Stock, acá ya estás adentro) ──
