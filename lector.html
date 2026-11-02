@@ -258,7 +258,7 @@ function pintarYa() {
     const a = articulos.get(sku);
     const nuevo = !yaPintados.has(sku); yaPintados.add(sku);
     return `<li class="${nuevo ? 'nuevo' : ''}">${a && a.foto ? `<img class="foto" src="${escHtml(a.foto)}" loading="lazy" alt="">` : `<div class="foto">${ICONO_CAJA}</div>`}
-      <div class="txt"><div class="desc">${escHtml(a ? a.desc : sku)}</div><div class="sku">${a ? escHtml(sku) : usuario ? 'buscando el nombre…' : 'entrá con tu usuario para ver el nombre'}</div></div>
+      <div class="txt"><div class="desc">${escHtml(a ? a.desc : sku)}</div><div class="sku">${a ? escHtml(sku) : usuario ? 'buscando el nombre…' : 'entrá para ver el nombre'}</div></div>
       <div class="cant">${g.u}</div></li>`;
   }).join('') : '<li class="vacio">Mantené apretado el gatillo y pasá la C72 despacio por el estante.</li>';
 
