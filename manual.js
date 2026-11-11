@@ -13,6 +13,8 @@ function _manualSecciones() {
                   (typeof esAdmin !== 'undefined' && esAdmin);
 
   const base = [
+    { icon: '🧭', titulo: 'La barra de arriba', desc: 'Es igual en todos los módulos: mismo lugar para cada cosa y el color de la moneda del módulo (el mismo del Hub).',
+      pasos: ['A la izquierda, la moneda y el nombre del módulo, y al lado tu local. En la computadora, tocando el nombre (Stock ▾) se abre la lista para pasar a otro módulo; al final de esa lista está «Volver al Hub».', 'Al lado van los apartados: Buscar, Listas, Redistribución (solo encargadas y administración), Traslados e Inventario. Son íconos; al pasar el mouse aparece el nombre, y el apartado en el que estás queda marcado en blanco con su nombre.', 'A la derecha: Salir.', 'En el celular: los apartados están adentro del botón ☰; a la vista quedan 🏠 Hub (volver al Hub) y Salir.', 'En la pestaña de la compu, al lado de "Stock", figura la versión (por ejemplo v89). Si dice "vieja", abajo aparece el cartel para actualizar.', '¿Dudas? Preguntale a Clodi (el botón de abajo a la derecha): sabe todo lo que dice este manual.'] },
     {
       icon: '🔐', titulo: 'Entrar una sola vez',
       desc: 'La sesión se comparte entre todos los módulos del sistema.',
@@ -52,10 +54,11 @@ function _manualSecciones() {
       ],
     },
     {
-      icon: '🌿', titulo: 'Espalma',
-      desc: 'Precios y colores en vivo de los productos Espalma, buscando por patrón.',
+      icon: '📋', titulo: 'Listas de productos',
+      desc: 'Toallas (Espalma), Ropa de cama, Alfombras de baño, Alfombras y Pantallas: cada modelo con sus medidas, precio y los colores en stock.',
       pasos: [
-        'Pestaña Espalma → escribí el patrón o parte del nombre.',
+        'Apartado Listas (el ícono de la lista, en la barra de arriba).',
+        'Arriba están las pastillas de cada lista (🧴 Toallas, 🛏 Ropa de cama, 🚿 Alf. baño, 🧶 Alfombras, 💡 Pantallas): tocá la que necesitás; la que estás viendo queda marcada.',
         'Muestra el precio actual y los colores disponibles directo de la base.',
       ],
     },
@@ -66,16 +69,16 @@ function _manualSecciones() {
         'Desde la ficha del artículo, tocá "Pedir traslado" y elegí el local que tiene stock y la cantidad.',
         'Al local le llega una notificación; la respuesta pasa por: pendiente → revisando → apartado o sin stock.',
         'Cuando respondan, te llega el aviso a vos con el resultado.',
-        'Antes de pedir, mirá el 📨 historial — capaz otra compañera ya lo pidió.',
-        'Si te arrepentís, lo anulás desde el 📨 historial con el 🗑 (solo los pedidos de tu local).',
-        '↩ Si el otro local YA lo apartó y el cliente después no lo quiso, no alcanza con anular: hay mercadería separada en otro local. Tocás "↩ Cancelar" en el 📨 historial, ponés el motivo, y al otro local le llega el aviso para que la vuelva a la venta. El pedido queda como "Piden cancelar" hasta que ellos toquen "✔ Liberado" — recién ahí te llega la confirmación y queda como Cancelado.',
+        'Antes de pedir, mirá el apartado Traslados (el camioncito de arriba) — capaz otra compañera ya lo pidió.',
+        'Si te arrepentís, lo anulás desde Traslados con el 🗑 (solo los pedidos de tu local).',
+        '↩ Si el otro local YA lo apartó y el cliente después no lo quiso, no alcanza con anular: hay mercadería separada en otro local. Tocás "↩ Cancelar" en Traslados, ponés el motivo, y al otro local le llega el aviso para que la vuelva a la venta. El pedido queda como "Piden cancelar" hasta que ellos toquen "✔ Liberado" — recién ahí te llega la confirmación y queda como Cancelado.',
       ],
     },
     {
-      icon: '📨', titulo: 'Historial de solicitudes',
+      icon: '🚚', titulo: 'Traslados (historial de solicitudes)',
       desc: 'Todas las solicitudes de traslado de los últimos 30 días, de todos los locales.',
       pasos: [
-        'Pestaña 📨 → ves cada solicitud con su estado y quién la hizo.',
+        'Apartado Traslados (el camioncito, en la barra de arriba) → ves cada solicitud con su estado y quién la hizo.',
         'Podés buscar por artículo o local.',
         'Si una solicitud está pendiente y es para tu local, tocála para responderla desde ahí.',
         '🗑 Anular: en los pedidos que hizo TU local aparece el tacho. Anula el pedido y le avisa al otro local — importante si ya lo estaban buscando. No se borra: queda como 🚫 Anulado, con quién lo anuló y por qué.',
@@ -85,7 +88,7 @@ function _manualSecciones() {
     },
     {
       icon: '⋮', titulo: 'Menú de opciones',
-      desc: 'El botón ⋮ de arriba a la derecha agrupa los ajustes.',
+      desc: 'El botón ⋮ al lado del buscador agrupa los ajustes.',
       pasos: [
         '🔔 Notificaciones: activalas para enterarte de traslados y avisos. En iPhone requiere la app instalada en pantalla de inicio. Si el teléfono las apaga solo (maña de iOS), la app las reactiva automáticamente al abrirla.',
         '🎯 Solo resultado exacto / 🚫 Ocultar sin stock / 📋 Vista tabla: filtros de búsqueda a gusto.',
@@ -95,12 +98,12 @@ function _manualSecciones() {
   ];
 
   if (gerente) {
-    base.splice(6, 0, {
+    base.splice(7, 0, {   // antes de Traslados (11-nov: +1 por "La barra de arriba")
       icon: '🔄', titulo: 'Redistribución (encargadas)',
       desc: 'Todos los lunes el sistema sugiere traslados entre sucursales: artículos que un local tiene de sobra y a otro le faltan.',
       pasos: [
         'Los lunes a la mañana te llega una notificación con las sugerencias nuevas.',
-        'En la pestaña 🔄 ves cada sugerencia: qué artículo, cuánto sobra en el origen y cuánto falta en destino.',
+        'En el apartado Redistribución (las dos flechas, en la barra de arriba) ves cada sugerencia: qué artículo, cuánto sobra en el origen y cuánto falta en destino.',
         '"Pedir traslado" arma la solicitud (podés cambiar la cantidad antes de enviar).',
         '"🚫 No trabajamos este producto": tu local no trabaja ese artículo → no se te vuelve a sugerir en los próximos listados.',
         '"Ahora no": la saca solo por esta semana; el lunes que viene puede volver a aparecer.',
