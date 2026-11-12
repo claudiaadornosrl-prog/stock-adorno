@@ -1103,13 +1103,18 @@ function setListaCat(id) {
 
 let esAdmin = false;
 let esGerente = false;          // encargada de local (ve Redistribución)
+let esDirectoraGenerica = false; // cuenta genérica de la oficina (rol directora, sin legajo): avisos como 'oficina'
 let miLocalStock = 'oficina';   // local del usuario, para el orden de las listas
 let espCache = [];
 
 async function detectarAdmin() {
   try {
     const { data } = await sb.rpc('rrhh_current_user');
-    esAdmin = data?.rol === 'admin';
+    // (12-nov-2026, JP) las cuentas genéricas de la oficina (administracion@ = PC de Marisa, claudiaadorno@ = PC de
+    // Analía) son rol 'directora' sin legajo: en Stock tienen ACCESO COMPLETO, igual que admin (Redistribución, ＋ y ✏️
+    // de Listas, todos los inventarios, "no lo trabajamos" de cualquier local). En la base: stock_es_admin().
+    esAdmin = data?.rol === 'admin' || data?.rol === 'directora';
+    esDirectoraGenerica = data?.rol === 'directora' && !data?.empleado_id;
     // Resolver el local: gerencia > legajo > oficina (admin/extras)
     esGerente = data?.rol === 'gerente';
     if (data?.local_gerencia) miLocalStock = data.local_gerencia;
@@ -1737,10 +1742,11 @@ async function solicitarImagen(sku) {
   try {
     const art = (ultimoResultado?.articulos || []).find(a => a.sku === sku);
     const desc = art?.descripcion ? ` (${art.descripcion})` : '';
-    for (const empId of EMPLEADAS_IMAGENES) {
+    // (12-nov) a cada una por su legajo y además a las dos PC de la oficina (cuentas genéricas, suscriptas como 'oficina')
+    for (const dest of [...EMPLEADAS_IMAGENES.map(id => ({ empleado_id: id })), { local: 'oficina' }]) {
       await sb.functions.invoke('enviar-push', {
         body: {
-          empleado_id: empId,
+          ...dest,
           app: 'stock',
           title: '📷 Falta imagen de producto',
           body: `Al SKU ${sku}${desc} le falta imagen. ¿La subís al Drive?`,
@@ -1822,12 +1828,13 @@ async function toggleNotifs() {
       applicationServerKey: urlB64ToUint8(VAPID_PUBLIC_KEY),
     });
     const raw = sub.toJSON();
-    // Quién es: empleada con legajo, o usuario genérico del local (alcorta@/unicenter@)
+    // Quién es: empleada con legajo, o usuario genérico del local (alcorta@/unicenter@), o cuenta genérica de la
+    // oficina (administracion@/claudiaadorno@, rol directora sin legajo → 'oficina', 12-nov)
     let empleadoId = null, localGen = null;
     try {
       const { data: u } = await sb.rpc('rrhh_current_user');
       empleadoId = u?.empleado_id ?? null;
-      if (!empleadoId) localGen = u?.local_gerencia ?? null;
+      if (!empleadoId) localGen = u?.local_gerencia ?? (u?.rol === 'directora' ? 'oficina' : null);
     } catch (_) {}
     if (!empleadoId && !localGen) {
       await sub.unsubscribe();
@@ -2451,6 +2458,15 @@ async function chequearTrasladoURL() {
   }
 }
 
+// (12-nov) A quién le vuelve el aviso de un pedido: a la empleada que lo pidió si tiene legajo; si lo pidió una cuenta
+// genérica (PC de un local o de la oficina, sin legajo), a las compus de ese local (enviar-push "local": encargada +
+// suscripciones genéricas de ese local; las dos PC de la oficina están suscriptas como 'oficina').
+function destinoSolicitante(t) {
+  if (t.solicitante_empleado_id) return { empleado_id: t.solicitante_empleado_id };
+  if (t.local_solicitante) return { local: t.local_solicitante };
+  return null;
+}
+
 async function marcarRevisando() {
   if (!trasladoResp) return;
   const t = trasladoResp;
@@ -2468,10 +2484,11 @@ async function marcarRevisando() {
     }
     t.estado = 'revisando'; t.revisando_por = quien;
     abrirModalRespuesta(t, quien);
-    if (t.solicitante_empleado_id) {
+    const dest = destinoSolicitante(t);
+    if (dest) {
       await sb.functions.invoke('enviar-push', {
         body: {
-          empleado_id: t.solicitante_empleado_id,
+          ...dest,
           app: 'stock',
           title: '👀 Están revisando tu pedido',
           body: `${LOCAL_LABEL[t.local_origen]}: ${quien || 'una compañera'} está buscando ${t.cantidad} × ${t.sku}`,
@@ -2496,10 +2513,11 @@ async function responderTraslado(tiene) {
       .update({ estado, respondido_por: quien, respondido_at: new Date().toISOString() })
       .eq('id', t.id).in('estado', ['pendiente', 'revisando']);
     if (error) throw error;
-    if (t.solicitante_empleado_id) {
+    const dest = destinoSolicitante(t);
+    if (dest) {
       await sb.functions.invoke('enviar-push', {
         body: {
-          empleado_id: t.solicitante_empleado_id,
+          ...dest,
           app: 'stock',
           title: tiene ? '✅ Te lo guardaron' : '❌ No está la mercadería',
           body: `${LOCAL_LABEL[t.local_origen]}: ${tiene ? 'te guardaron' : 'no encontraron'} ${t.cantidad} × ${t.sku}${quien ? ' · respondió ' + quien : ''}`,
@@ -2680,7 +2698,7 @@ mostrarVacio();
   }, true);
 })();
 </script>
-<script src="manual.js?v=9"></script>
+<script src="manual.js?v=10"></script>
 <script src="inventario.js?v=2"></script>
 <script>
 // (24-ago) Blindaje iOS: re-suscripcion automatica de push (ver regla en
@@ -2697,7 +2715,7 @@ mostrarVacio();
       const { data: u } = await sb.rpc('rrhh_current_user');
       const _u = Array.isArray(u) ? u[0] : u;
       _emp = _u?.empleado_id ?? null;
-      if (!_emp) _gen = _u?.local_gerencia ?? null;
+      if (!_emp) _gen = _u?.local_gerencia ?? (_u?.rol === 'directora' ? 'oficina' : null);   // (12-nov) PC de la oficina
     } catch (_) {}
     if (!_emp && !_gen) return;
     let q = sb.from('rrhh_push_subscriptions').select('id')

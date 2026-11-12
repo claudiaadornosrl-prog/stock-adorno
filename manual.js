@@ -26,6 +26,16 @@ function _manualSecciones() {
       ],
     },
     {
+      icon: '🏢', titulo: 'Las compus de la oficina',
+      desc: 'La compu de Marisa (administracion@) y la de Analía (claudiaadorno@) usan cuentas de la oficina, sin usuario personal. En Stock tienen acceso completo, las dos por igual.',
+      pasos: [
+        'Ven Redistribución, pueden agregar (＋) y editar (✏️) modelos de las Listas y marcar "No lo trabajamos" / "Volver a sugerir" para cualquier local.',
+        'En Inventario ven todos los inventarios de los tres locales con todas sus hojas.',
+        'Los traslados que piden quedan a nombre de la cuenta y de Oficina: la respuesta (lo están buscando, te lo guardaron, no está) llega a las dos compus de la oficina.',
+        'Para recibir esos avisos, en cada compu: menú ⋮ al lado del buscador → "🔕 Activar notificaciones".',
+      ],
+    },
+    {
       icon: '🔎', titulo: 'Buscar artículos',
       desc: 'Stock, precio y foto de cualquier artículo en los 3 locales.',
       pasos: [
@@ -68,7 +78,7 @@ function _manualSecciones() {
       pasos: [
         'Desde la ficha del artículo, tocá "Pedir traslado" y elegí el local que tiene stock y la cantidad.',
         'Al local le llega una notificación; la respuesta pasa por: pendiente → revisando → apartado o sin stock.',
-        'Cuando respondan, te llega el aviso a vos con el resultado.',
+        'Cuando respondan, te llega el aviso a vos con el resultado. Si lo pediste desde una compu con la cuenta del local o de la oficina (sin usuario personal), el aviso llega a las compus de ese local.',
         'Antes de pedir, mirá el apartado Traslados (el camioncito de arriba) — capaz otra compañera ya lo pidió.',
         'Si te arrepentís, lo anulás desde Traslados con el 🗑 (solo los pedidos de tu local).',
         '↩ Si el otro local YA lo apartó y el cliente después no lo quiso, no alcanza con anular: hay mercadería separada en otro local. Tocás "↩ Cancelar" en Traslados, ponés el motivo, y al otro local le llega el aviso para que la vuelva a la venta. El pedido queda como "Piden cancelar" hasta que ellos toquen "✔ Liberado" — recién ahí te llega la confirmación y queda como Cancelado.',
@@ -98,7 +108,7 @@ function _manualSecciones() {
   ];
 
   if (gerente) {
-    base.splice(7, 0, {   // antes de Traslados (11-nov: +1 por "La barra de arriba")
+    base.splice(8, 0, {   // antes de Traslados (11-nov: +1 por "La barra de arriba"; 12-nov: +1 por "Las compus de la oficina")
       icon: '🔄', titulo: 'Redistribución (encargadas)',
       desc: 'Todos los lunes el sistema sugiere traslados entre sucursales: artículos que un local tiene de sobra y a otro le faltan.',
       pasos: [
