@@ -2082,7 +2082,18 @@ async function enviarTraslado() {
 // ── Responder un pedido de traslado (se abre al tocar la notificación) ──
 let trasladoResp = null;
 
+// (13-nov, JP) Cada local solo toca los traslados donde está (el que lo tiene = local_origen, o el que lo pidió =
+// local_solicitante); la oficina y admin/directora, todos. La regla de verdad es la política st_update de la base:
+// esto es para no abrir una ventana que después rebota.
+function puedoTocarTraslado(t) {
+  return esAdmin || miLocalStock === 'oficina' || [t.local_origen, t.local_solicitante].includes(miLocalStock);
+}
+
 function abrirModalRespuesta(t, miNombre) {
+  if (!puedoTocarTraslado(t)) {
+    toast(`Este pedido es entre ${LOCAL_LABEL[t.local_origen] || t.local_origen} y ${LOCAL_LABEL[t.local_solicitante] || t.local_solicitante}: lo responden ellos o la oficina.`);
+    return;
+  }
   trasladoResp = t;
   const solicitante = t.solicitante_nombre || t.solicitante_email;
   document.getElementById('trasresp-titulo').textContent = '🔁 Pedido de traslado';
@@ -2287,6 +2298,7 @@ function renderHistorialTraslados() {
     const cfg = TRAS_ESTADO_CFG[x.estado] || { label: x.estado, color: '#475569', bg: '#f8fafc' };
     const f = new Date(x.created_at).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' });
     const accionable = x.estado === 'pendiente' || x.estado === 'revisando';
+    const respondible = accionable && puedoTocarTraslado(x);   // (13-nov) solo los de mi local (oficina/admin: todos)
     // Anular: SOLO los pedidos que hizo MI local (admin puede con todos). La
     // decisión real la toma la RPC — esto es nada más para no mostrar un botón
     // que va a rebotar.
@@ -2301,8 +2313,8 @@ function renderHistorialTraslados() {
       : x.estado === 'revisando' ? (x.revisando_por ? ' ' + x.revisando_por : '')
       : x.estado === 'sin_stock' ? (x.respondido_por ? ' (' + x.respondido_por + ')' : '')
       : x.estado === 'anulado' ? (x.anulado_por ? ' por ' + x.anulado_por.split('@')[0] : '') : '';
-    return `<div onclick="${accionable ? `responderDesdeHistorial(${x.id})` : ''}"
-      style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid #f1f5f9;background:#fff;${accionable ? 'cursor:pointer;' : ''}">
+    return `<div onclick="${respondible ? `responderDesdeHistorial(${x.id})` : ''}"
+      style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid #f1f5f9;background:#fff;${respondible ? 'cursor:pointer;' : ''}">
       <div style="min-width:0;">
         <div style="font-weight:700;font-size:14px;">${escHtml(x.sku)} <span style="font-weight:400;color:#94a3b8;">× ${x.cantidad}</span></div>
         <div style="font-size:12px;color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(x.descripcion || '')}</div>
@@ -2509,10 +2521,16 @@ async function responderTraslado(tiene) {
   const quien = await nombrePropio();
   const estado = tiene ? 'apartado' : 'sin_stock';
   try {
-    const { error } = await sb.from('stock_traslados')
+    const { data: filas, error } = await sb.from('stock_traslados')
       .update({ estado, respondido_por: quien, respondido_at: new Date().toISOString() })
-      .eq('id', t.id).in('estado', ['pendiente', 'revisando']);
+      .eq('id', t.id).in('estado', ['pendiente', 'revisando']).select('id');
     if (error) throw error;
+    // (13-nov) si no cambió ninguna fila: ya lo respondió otra o no es de tu local (política st_update) → no avisar en falso
+    if (!filas || !filas.length) {
+      toast('No se guardó: ya lo respondieron, o el pedido no es de tu local.');
+      if (document.getElementById('view-traslados').style.display !== 'none') cargarHistorialTraslados();
+      return;
+    }
     const dest = destinoSolicitante(t);
     if (dest) {
       await sb.functions.invoke('enviar-push', {
@@ -2698,7 +2716,7 @@ mostrarVacio();
   }, true);
 })();
 </script>
-<script src="manual.js?v=10"></script>
+<script src="manual.js?v=11"></script>
 <script src="inventario.js?v=2"></script>
 <script>
 // (24-ago) Blindaje iOS: re-suscripcion automatica de push (ver regla en

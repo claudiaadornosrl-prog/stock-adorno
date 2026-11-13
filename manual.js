@@ -91,6 +91,7 @@ function _manualSecciones() {
         'Apartado Traslados (el camioncito, en la barra de arriba) → ves cada solicitud con su estado y quién la hizo.',
         'Podés buscar por artículo o local.',
         'Si una solicitud está pendiente y es para tu local, tocála para responderla desde ahí.',
+        'Cada local solo puede responder o modificar los pedidos donde está: el local que tiene la mercadería o el que la pidió. Los pedidos entre otros dos locales se ven, pero no se pueden tocar. La oficina y administración pueden con todos.',
         '🗑 Anular: en los pedidos que hizo TU local aparece el tacho. Anula el pedido y le avisa al otro local — importante si ya lo estaban buscando. No se borra: queda como 🚫 Anulado, con quién lo anuló y por qué.',
         'Los pedidos del otro local no tienen tacho: cada local anula los propios.',
         '↩ "Piden cancelar": si vos habías apartado la mercadería y el otro local pide cancelar, te llega el aviso con el motivo. Volvés el artículo a la venta y tocás "✔ Liberado": eso confirma la cancelación y le avisa a quien lo había pedido. Hasta que no confirmes, el pedido sigue vivo — así nadie se queda con mercadería apartada de más ni la vende dos veces.',
