@@ -496,6 +496,7 @@ window.ADORNO_SSO = (function () {
 <link rel="stylesheet" href="/hub/banner.css?v=4"><!-- banner común de los módulos (infra, 11-nov-2026) -->
 <script src="/hub/version.js" defer></script><!-- versión en el título, cambio de módulo y traba de equipo -->
 <script src="/hub/caras.js?v=4" defer></script><!-- (14-nov-2026) "📷 Registra quién" por función (Hub → Permisos) -->
+<script src="/hub/seguridad.js?v=1" defer></script><!-- (14-nov-2026) código del celular de quien autoriza (permisos del Hub) -->
 <!-- ⚠ este index.html lo tocan varias charlas (Stock, RFID/Inventario): volver a leerlo antes de editar -->
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.min.js" integrity="sha384-UagCvVPT5XXA0Hx+nJYUAGBFseHT9zBgpJMSebsAxl9lciTwbT+39j5VfRjdP5Tp" crossorigin="anonymous"></script>
@@ -855,6 +856,7 @@ tr.drag-over { border-top: 3px solid var(--primary); }
 
 <div id="toast"></div>
 
+<script src="permisos.js?v=1"></script><!-- (14-nov-2026) permisos por función desde el Hub -->
 <script>
 // ═══════════════════════════════════════════════════════════════════
 // CONFIG
@@ -920,9 +922,8 @@ function mostrarLogin() {
 function mostrarApp() {
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('app').style.display = '';
-  detectarAdmin();
+  detectarAdmin().finally(() => chequearTrasladoURL());   // (14-nov) primero los permisos del Hub y el local
   actualizarBtnNotifs();
-  chequearTrasladoURL();
   setTimeout(() => document.getElementById('q').focus(), 100);
 }
 
@@ -1043,7 +1044,16 @@ actualizarChipFiltro();
 
 // ═══ Tabs ═══
 let espCargado = false;
+// (14-nov-2026) cada pestaña se ve si el perfil tiene alguna de sus funciones (Hub → Permisos). Si todas las que tiene
+// están en "pide permiso", al abrirla autoriza alguien una vez y queda abierta hasta recargar.
+const TABS_FUNC = {
+  stock: ['stock.buscar'], espalma: ['stock.listas'], redis: ['stock.redistribucion'], traslados: ['stock.traslados'],
+  inventario: ['stock.inv_armar', 'stock.inv_contar', 'stock.inv_controlar', 'stock.rfid_leer', 'stock.rfid_comparar'],
+};
+const tabVisible = t => (TABS_FUNC[t] || []).some(veo);
 function verTab(t) {
+  const fs = TABS_FUNC[t] || [], fa = fs.some(f => permiso(f) === 'h') ? null : fs.find(f => permiso(f) === 'a');
+  if (fa && !PERM_VISTO.has(fa)) { puedeVer(fa).then(ok => { if (ok) verTab(t); }); return; }
   document.getElementById('view-stock').style.display = t === 'stock' ? '' : 'none';
   document.getElementById('view-espalma').style.display = t === 'espalma' ? '' : 'none';
   document.getElementById('view-redis').style.display = t === 'redis' ? '' : 'none';
@@ -1125,8 +1135,9 @@ async function detectarAdmin() {
       if (e?.local && ['alcorta','unicenter','oficina'].includes(e.local)) miLocalStock = e.local;
     }
   } catch (_) { esAdmin = false; }
-  document.getElementById('btn-esp-add').style.display = esAdmin ? '' : 'none';
-  document.getElementById('tab-redis').style.display = (esAdmin || esGerente) ? '' : 'none';
+  // (14-nov-2026, JP) lo que se ve y lo que se puede hacer lo deciden los permisos del Hub (permisos.js), no el rol
+  await cargarPermisos();
+  aplicarPermisosPantalla();
   // (11-nov) banner común: al lado del nombre va el local de la persona
   const abSub = document.getElementById('ab-sub');
   if (abSub) abSub.textContent = ({ alcorta: 'Alcorta', unicenter: 'Unicenter', oficina: 'Oficina' })[miLocalStock] || '';
@@ -1134,11 +1145,22 @@ async function detectarAdmin() {
     history.replaceState(null, '', location.pathname);
     verTab('inventario');
   }
-  if (new URLSearchParams(location.search).get('vista') === 'redistribucion' && (esAdmin || esGerente)) {
+  if (new URLSearchParams(location.search).get('vista') === 'redistribucion' && veo('stock.redistribucion')) {
     history.replaceState(null, '', location.pathname);
     verTab('redis');
   }
   if (espCargado) { renderListasChips(); renderEspalma(); }
+}
+
+// Pestañas y botones según los permisos del Hub. Sin ninguna pestaña, se avisa.
+function aplicarPermisosPantalla() {
+  for (const t of Object.keys(TABS_FUNC)) { const b = document.getElementById('tab-' + t); if (b) b.style.display = tabVisible(t) ? '' : 'none'; }
+  document.getElementById('btn-esp-add').style.display = veo('stock.listas_editar') ? '' : 'none';
+  if (!tabVisible('stock')) {
+    const primera = Object.keys(TABS_FUNC).find(tabVisible);
+    if (primera) verTab(primera);
+    else document.getElementById('view-stock').innerHTML = '<div class="empty">Tu perfil no tiene funciones de Stock habilitadas. Pedíselas a administración (Hub → Permisos).</div>';
+  }
 }
 
 async function cargarEspalma() {
@@ -1230,10 +1252,11 @@ function renderEspalma() {
   const cont = document.getElementById('esp-contenido');
   if (false) {
     cont.innerHTML = '<div class="empty"><div class="big">🧺</div>No hay modelos en esta lista.' +
-      (esAdmin ? '<br>Usá el botón ＋ para agregar el primero.' : '') + '</div>';
+      (veo('stock.listas_editar') ? '<br>Usá el botón ＋ para agregar el primero.' : '') + '</div>';
     return;
   }
   const cat = LISTAS_CATS.find(c => c.id === listaCat) || LISTAS_CATS[0];
+  const ordenable = veoEn('stock.listas_ordenar', miLocalStock), editable = veo('stock.listas_editar');   // (14-nov) Hub
   // Modelos sin ningun color en stock: ocultos (admin los ve atenuados para poder editarlos)
   // Sin stock: ocultos para todos; admin puede mostrarlos con el toggle 👁
   let visibles = espCache.filter(m => (m.categoria || 'espalma') === listaCat)
@@ -1252,12 +1275,12 @@ function renderEspalma() {
   }
   if (!visibles.length) {
     cont.innerHTML = '<div class="empty"><div class="big">🧺</div>No hay modelos con stock en esta lista.' +
-      (esAdmin ? '<br>Usá el botón ＋ para agregar.' : '') + '</div>';
+      (veo('stock.listas_editar') ? '<br>Usá el botón ＋ para agregar.' : '') + '</div>';
     return;
   }
   const filas = visibles.map(m => `
     <tr class="${m.patron ? 'esp-fila-click' : ''}" data-id="${m.id}" ${m.colores_stock === 0 ? 'style="opacity:0.45;"' : ''} ${m.patron ? `onclick="abrirEspalmaStock(${m.id})" title="Ver stock por color"` : ''}>
-      <td class="drag-h" onclick="event.stopPropagation();" title="Arrastrar para reordenar">⠿</td>
+      ${ordenable ? '<td class="drag-h" onclick="event.stopPropagation();" title="Arrastrar para reordenar">⠿</td>' : '<td></td>'}
       ${cat.numero ? `<td style="text-align:center;font-weight:700;color:var(--primary);">${m.numero_local ? escHtml(m.numero_local) : '·'}</td>` : ''}
       <td><span class="esp-modelo">${escHtml(m.modelo)}</span>
           ${m.nota ? `<div class="esp-nota">${escHtml(m.nota)}</div>` : ''}
@@ -1267,11 +1290,11 @@ function renderEspalma() {
       <td>${escHtml(m.toallon || '—')}</td>
       <td>${escHtml(m.gramaje || '—')}</td>
       <td class="esp-precio">${m.precio != null ? fmt$(m.precio) : '—'}</td>
-      ${esAdmin ? `<td><button class="btn-edit-row" onclick="event.stopPropagation();abrirEspalmaEdit(${m.id})" title="Editar">✏️</button></td>` : ''}
+      ${editable ? `<td><button class="btn-edit-row" onclick="event.stopPropagation();abrirEspalmaEdit(${m.id})" title="Editar">✏️</button></td>` : ''}
     </tr>`).join('');
   cont.innerHTML = `<div class="esp-wrap"><table class="esp-tabla">
     <thead><tr>
-      <th style="width:26px;"></th>${cat.numero ? '<th style="text-align:center;">N°</th>' : ''}<th>Modelo</th><th>SKU</th><th>${cat.cols[0]}</th><th>${cat.cols[1]}</th><th>${cat.cols[2]}</th><th>${cat.cols[3]}</th>${esAdmin ? '<th></th>' : ''}
+      <th style="width:26px;"></th>${cat.numero ? '<th style="text-align:center;">N°</th>' : ''}<th>Modelo</th><th>SKU</th><th>${cat.cols[0]}</th><th>${cat.cols[1]}</th><th>${cat.cols[2]}</th><th>${cat.cols[3]}</th>${editable ? '<th></th>' : ''}
     </tr></thead>
     <tbody>${filas}</tbody>
   </table></div>`;
@@ -1281,7 +1304,7 @@ function renderEspalma() {
 // ── Detector de modelos nuevos sin lista (solo admin) ──
 let sugCache = [];
 async function chequearSugerencias() {
-  if (!esAdmin) return;
+  if (!veo('stock.listas_editar')) return;
   try {
     const { data, error } = await sb.rpc('stock_modelos_sin_lista');
     if (error) throw error;
@@ -1331,12 +1354,13 @@ async function ignorarSugerencia(i) {
   const g = sugCache[i];
   if (!g) return;
   if (!confirm(`¿Descartar "${g.modelo_sugerido}"?\n\nNo va a aparecer más en la lista de sugerencias.\n(Se sigue viendo normal en el buscador 🔍)`)) return;
-  if (!await registrarQuien('stock.listas_editar', { accion: 'descartar sugerencia', modelo: g.modelo_sugerido, categoria: g.categoria })) return;
+  const reg = await registrarQuien('stock.listas_editar', { accion: 'descartar sugerencia', modelo: g.modelo_sugerido, categoria: g.categoria });
+  if (!reg) return;
   const card = document.getElementById('sug-card-' + i);
   let quien = '';
   try { quien = (await sb.auth.getUser()).data?.user?.email || ''; } catch (_) {}
   try {
-    const { error } = await sb.from('stock_modelos_ignorados').insert({
+    const { error } = await reg.db.from('stock_modelos_ignorados').insert({
       patron: g.patron_sugerido,
       modelo: g.modelo_sugerido,
       categoria: g.categoria,
@@ -1356,9 +1380,10 @@ async function crearDesdeSugerencia(i) {
   const g = sugCache[i];
   if (!g) return;
   const card = document.getElementById('sug-card-' + i);
-  if (!await registrarQuien('stock.listas_editar', { accion: 'crear desde sugerencia', modelo: g.modelo_sugerido, categoria: g.categoria })) return;
+  const reg = await registrarQuien('stock.listas_editar', { accion: 'crear desde sugerencia', modelo: g.modelo_sugerido, categoria: g.categoria });
+  if (!reg) return;
   try {
-    const { error } = await sb.from('espalma_modelos').insert({
+    const { error } = await reg.db.from('espalma_modelos').insert({
       categoria: g.categoria,
       modelo: g.modelo_sugerido,
       toalla: g.medidas || null,
@@ -1384,7 +1409,7 @@ let dragRow = null, dragTbody = null;
 
 function initDragListas() {
   const tbody = document.querySelector('#esp-contenido tbody');
-  if (!tbody) return;
+  if (!tbody || !veoEn('stock.listas_ordenar', miLocalStock)) return;   // (14-nov) Hub
   dragTbody = tbody;
   tbody.querySelectorAll('.drag-h').forEach(h => {
     h.addEventListener('pointerdown', ev => {
@@ -1418,9 +1443,10 @@ function initDragListas() {
         .map(tr => parseInt(tr.dataset.id)).filter(Boolean);
       if (!ids.length) return;
       // si no se anotó quién (cerró la ventana), la lista vuelve al orden guardado
-      if (!await registrarQuien('stock.listas_ordenar', { lista: listaCat, local: miLocalStock })) { renderEspalma(); return; }
+      const reg = await registrarQuien('stock.listas_ordenar', { lista: listaCat, local: miLocalStock }, miLocalStock);
+      if (!reg) { renderEspalma(); return; }
       try {
-        const { error } = await sb.rpc('espalma_reordenar_local', { p_local: miLocalStock, p_ids: ids });
+        const { error } = await reg.db.rpc('espalma_reordenar_local', { p_local: miLocalStock, p_ids: ids });
         if (error) throw error;
         ids.forEach((id, i) => {
           const m = espCache.find(x => x.id === id);
@@ -1530,13 +1556,14 @@ async function guardarEspalma() {
     numero_local: document.getElementById('esp-numero').value.trim() || null,
     updated_at: new Date().toISOString(),
   };
-  if (!await registrarQuien('stock.listas_editar', { accion: espEditId ? 'editar modelo' : 'agregar modelo', modelo, id: espEditId || null })) return;
+  const reg = await registrarQuien('stock.listas_editar', { accion: espEditId ? 'editar modelo' : 'agregar modelo', modelo, id: espEditId || null });
+  if (!reg) return;
   try {
     if (espEditId) {
-      const { error } = await sb.from('espalma_modelos').update(fila).eq('id', espEditId);
+      const { error } = await reg.db.from('espalma_modelos').update(fila).eq('id', espEditId);
       if (error) throw error;
     } else {
-      const { error } = await sb.from('espalma_modelos').insert(fila);
+      const { error } = await reg.db.from('espalma_modelos').insert(fila);
       if (error) throw error;
     }
     cerrarEspalmaModal();
@@ -1549,9 +1576,10 @@ async function borrarEspalma() {
   if (!espEditId) return;
   if (!confirm('¿Eliminar este modelo?')) return;
   const mod = espCache.find(x => x.id === espEditId);
-  if (!await registrarQuien('stock.listas_editar', { accion: 'eliminar modelo', modelo: mod?.modelo || null, id: espEditId })) return;
+  const reg = await registrarQuien('stock.listas_editar', { accion: 'eliminar modelo', modelo: mod?.modelo || null, id: espEditId });
+  if (!reg) return;
   try {
-    const { error } = await sb.from('espalma_modelos').delete().eq('id', espEditId);
+    const { error } = await reg.db.from('espalma_modelos').delete().eq('id', espEditId);
     if (error) throw error;
     cerrarEspalmaModal();
     toast('🗑 Eliminado');
@@ -1581,12 +1609,17 @@ function toast(msg) {
 // antes de grabar se pide quién lo está haciendo (la cara, o tocar su nombre en la lista; con usuario personal se anota
 // solo) y queda en Hub → Permisos → Registro. Si no está marcada, sigue normal. Devuelve el registro, o null si NO hay
 // que hacer la operación (la persona cerró la ventana o no se pudo anotar). El local que se anota es el de la compu.
+// (14-nov-2026) Antes que eso, el permiso del Hub de la función (y del local de la operación, si se pasa): sin permiso
+// no sigue; si "pide permiso", autoriza alguien que la tenga. r.db es el cliente con el que se graba (sb, o la sesión
+// de quien autorizó, que se cierra sola a los 2 minutos).
 let _registrando = false;   // doble toque mientras se pregunta quién → el segundo no hace nada
-async function registrarQuien(funcion, detalle) {
+async function registrarQuien(funcion, detalle, localPermiso) {
   if (_registrando) return null;
   _registrando = true;
-  let r;
+  let r, db = null;
   try {
+    db = await clientePara(funcion, localPermiso || null);
+    if (!db) return null;
     if (window.ADORNO_CARAS?.registrar) {
       r = await ADORNO_CARAS.registrar({ cli: sb, funcion, local: miLocalStock || null, detalle: detalle || null });
     } else {
@@ -1599,9 +1632,12 @@ async function registrarQuien(funcion, detalle) {
   } catch (e) { r = { ok: false, motivo: 'error', error: e.message || String(e) }; }
   finally { _registrando = false; }
   if (!r?.ok) {
+    soltarCli(db);
     if (r?.motivo === 'error') toast('No pude anotar quién lo hace: ' + (r.error || 'error'));
     return null;
   }
+  r.db = db;
+  if (db !== sb) setTimeout(() => soltarCli(db), 120000);
   return r;
 }
 // Nombre de quien tocó su nombre o fue reconocida (cuenta compartida); '' si no hizo falta preguntar
@@ -1616,18 +1652,22 @@ function nombreRegistrado(r) {
 }
 // Si la persona ya se identificó hace un momento en la misma ventana (p. ej. "Lo busco" y después "Lo tengo"), se anota
 // a esa misma persona sin volver a preguntarle.
-async function registrarQuienYa(funcion, previo, detalle) {
-  if (!previo || previo.omitido || !previo.empleado_id) return registrarQuien(funcion, detalle);
+async function registrarQuienYa(funcion, previo, detalle, localPermiso) {
+  if (!previo || previo.omitido || !previo.empleado_id) return registrarQuien(funcion, detalle, localPermiso);
   if (_registrando) return null;
   _registrando = true;
+  let db = null;
   try {
+    db = await clientePara(funcion, localPermiso || null);
+    if (!db) return null;
+    if (db !== sb) setTimeout(() => soltarCli(db), 120000);
     const { data: c, error: e1 } = await sb.rpc('hub_registra_quien', { p_funcion: funcion });
     if (e1) throw e1;
-    if (!c?.registra) return { ok: true, omitido: true };
+    if (!c?.registra) return { ok: true, omitido: true, db };
     const { data, error } = await sb.rpc('hub_registrar', { p_funcion: funcion, p_local: miLocalStock || null, p_empleado_id: previo.empleado_id, p_detalle: detalle || null });
     if (error) throw error;
-    return { ok: true, ...data };
-  } catch (e) { toast('No pude anotar quién lo hace: ' + (e.message || e)); return null; }
+    return { ok: true, ...data, db };
+  } catch (e) { soltarCli(db); toast('No pude anotar quién lo hace: ' + (e.message || e)); return null; }
   finally { _registrando = false; }
 }
 
@@ -1645,6 +1685,7 @@ async function buscar() {
   const cont = document.getElementById('resultados');
   const q = document.getElementById('q').value.trim();
   if (q.length < 2) return;
+  if (!(await puedeVer('stock.buscar'))) return;   // (14-nov) permiso del Hub
   cont.innerHTML = '<div class="empty"><span class="spinner"></span></div>';
 
   // Sanitizar para el filtro or= de PostgREST (sin comas/paréntesis/%)
@@ -2106,7 +2147,7 @@ async function enviarTraslado() {
   const { sku, local, desc, sugerenciaId } = trasladoActual;
   const cant = parseInt(document.getElementById('tras-cant').value) || 1;
   // (14-nov) si cierra la ventana de quién lo pide, el pedido queda abierto para mandarlo después
-  const reg = await registrarQuien('stock.traslados', { accion: 'pedir', sku, cantidad: cant, a: local, sugerencia: sugerenciaId || null });
+  const reg = await registrarQuien('stock.traslados', { accion: 'pedir', sku, cantidad: cant, a: local, sugerencia: sugerenciaId || null }, miLocalStock);
   if (!reg) return;
   cerrarTraslado();
   let quien = '', empId = null;
@@ -2114,7 +2155,7 @@ async function enviarTraslado() {
   try { empId = (await sb.rpc('rrhh_current_user')).data?.empleado_id ?? null; } catch (_) {}
   const nombre = nombreRegistrado(reg) || await nombrePropio();
   try {
-    const { data: fila, error } = await sb.from('stock_traslados').insert({
+    const { data: fila, error } = await reg.db.from('stock_traslados').insert({
       sku, descripcion: desc, cantidad: cant, local_origen: local,
       solicitante_email: quien, solicitante_empleado_id: empId, solicitante_nombre: nombre,
       local_solicitante: miLocalStock,   // es lo que decide quién puede anularlo
@@ -2133,7 +2174,7 @@ async function enviarTraslado() {
     });
     toast('📣 Pedido enviado a ' + LOCAL_LABEL[local] + ' — te llega push cuando respondan');
     if (sugerenciaId) {
-      await sb.from('stock_redistribucion').update({
+      await reg.db.from('stock_redistribucion').update({
         estado: 'usada', traslado_id: fila.id,
         resuelto_por: nombre || quien, resuelto_at: new Date().toISOString(),
       }).eq('id', sugerenciaId);
@@ -2148,10 +2189,11 @@ async function enviarTraslado() {
 let trasladoResp = null;
 
 // (13-nov, JP) Cada local solo toca los traslados donde está (el que lo tiene = local_origen, o el que lo pidió =
-// local_solicitante); la oficina y admin/directora, todos. La regla de verdad es la política st_update de la base:
-// esto es para no abrir una ventana que después rebota.
+// local_solicitante). (14-nov) Con los permisos del Hub: «Pedir traslados» en uno de sus locales, o en cualquiera con
+// «operar en nombre de otro local». La regla de verdad es la política st_update de la base: esto es para no abrir una
+// ventana que después rebota.
 function puedoTocarTraslado(t) {
-  return esAdmin || miLocalStock === 'oficina' || [t.local_origen, t.local_solicitante].includes(miLocalStock);
+  return veoEn('stock.traslados', t.local_origen) || veoEn('stock.traslados', t.local_solicitante);
 }
 
 function abrirModalRespuesta(t, miNombre) {
@@ -2209,8 +2251,8 @@ function renderRedistribucion() {
   const cont = document.getElementById('view-redis');
   const gen = _redisCache[0]?.generado_at
     ? new Date(_redisCache[0].generado_at).toLocaleDateString('es-AR') : '';
-  const paraMi  = esAdmin ? [] : _redisCache.filter(s => s.local_destino === miLocalStock);
-  const desdeMi = esAdmin ? [] : _redisCache.filter(s => s.local_origen === miLocalStock && s.local_destino !== miLocalStock);
+  const paraMi  = opeTodos() ? [] : _redisCache.filter(s => s.local_destino === miLocalStock);
+  const desdeMi = opeTodos() ? [] : _redisCache.filter(s => s.local_origen === miLocalStock && s.local_destino !== miLocalStock);
   const filaHtml = (s, accionable) => `
     <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid #f1f5f9;background:#fff;">
       <div style="min-width:0;">
@@ -2221,9 +2263,9 @@ function renderRedistribucion() {
           · sugerido: <b>${s.cantidad_sugerida}</b></div>
       </div>
       ${accionable ? `<div style="display:flex;flex-direction:column;gap:5px;flex-shrink:0;">
-        <button onclick="usarSugerencia(${s.id})" style="background:#0f6e56;color:#fff;border:none;border-radius:8px;padding:7px 12px;font-size:12px;font-weight:700;cursor:pointer;">🔁 Pedir traslado</button>
-        <button onclick="redisNoTrabaja(${s.id})" title="Este local no trabaja este producto: no se vuelve a sugerir" style="background:#fff;border:1px solid #fecaca;border-radius:8px;padding:5px 10px;font-size:12px;color:#b91c1c;cursor:pointer;">🚫 No trabajamos este producto</button>
-        <button onclick="redisAhoraNo(${s.id})" title="Solo por esta semana: el lunes que viene puede volver a aparecer" style="background:none;border:1px solid #e2e8f0;border-radius:8px;padding:5px 12px;font-size:12px;color:#64748b;cursor:pointer;">Ahora no</button>
+        ${veoEn('stock.traslados', s.local_destino) ? `<button onclick="usarSugerencia(${s.id})" style="background:#0f6e56;color:#fff;border:none;border-radius:8px;padding:7px 12px;font-size:12px;font-weight:700;cursor:pointer;">🔁 Pedir traslado</button>` : ''}
+        ${veoEn('stock.no_trabajamos', s.local_destino) ? `<button onclick="redisNoTrabaja(${s.id})" title="Este local no trabaja este producto: no se vuelve a sugerir" style="background:#fff;border:1px solid #fecaca;border-radius:8px;padding:5px 10px;font-size:12px;color:#b91c1c;cursor:pointer;">🚫 No trabajamos este producto</button>` : ''}
+        ${veoEn('stock.redistribucion', s.local_destino) ? `<button onclick="redisAhoraNo(${s.id})" title="Solo por esta semana: el lunes que viene puede volver a aparecer" style="background:none;border:1px solid #e2e8f0;border-radius:8px;padding:5px 12px;font-size:12px;color:#64748b;cursor:pointer;">Ahora no</button>` : ''}
       </div>` : ''}
     </div>`;
   const seccion = (titulo, items, accionable) => !items.length ? '' : `
@@ -2232,7 +2274,7 @@ function renderRedistribucion() {
       <div style="border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">${items.map(s => filaHtml(s, accionable)).join('')}</div>
     </div>`;
   let cuerpo;
-  if (esAdmin) {
+  if (opeTodos()) {
     cuerpo = seccion('📥 Para Alcorta', _redisCache.filter(s => s.local_destino === 'alcorta'), true)
            + seccion('📥 Para Unicenter', _redisCache.filter(s => s.local_destino === 'unicenter'), true);
   } else {
@@ -2250,19 +2292,19 @@ function renderRedistribucion() {
 }
 
 function _htmlNoTrabaja() {
-  const lista = esAdmin ? _noTrabaja : _noTrabaja.filter(x => x.local === miLocalStock);
+  const lista = opeTodos() ? _noTrabaja : _noTrabaja.filter(x => x.local === miLocalStock);
   if (!lista.length) return '';
   const filas = lista.map(x => `
     <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid #f1f5f9;background:#fff;">
       <div style="min-width:0;">
-        <div style="font-weight:700;font-size:13px;">${escHtml(x.sku)}${esAdmin ? ` <span style="font-weight:500;color:#64748b;">· ${LOCAL_LABEL[x.local] || x.local}</span>` : ''}</div>
+        <div style="font-weight:700;font-size:13px;">${escHtml(x.sku)}${opeTodos() ? ` <span style="font-weight:500;color:#64748b;">· ${LOCAL_LABEL[x.local] || x.local}</span>` : ''}</div>
         <div style="font-size:12px;color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(x.descripcion || '')}</div>
         <div style="font-size:11px;color:#94a3b8;">${escHtml(x.marcado_por || '')}${x.marcado_at ? ' · ' + new Date(x.marcado_at).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : ''}${x.motivo ? ' · ' + escHtml(x.motivo) : ''}</div>
       </div>
-      <button onclick="redisVolverASugerir(${_noTrabaja.indexOf(x)})" style="background:none;border:1px solid #e2e8f0;border-radius:8px;padding:5px 10px;font-size:12px;color:#0f6e56;cursor:pointer;white-space:nowrap;">↩ Volver a sugerir</button>
+      ${veoEn('stock.no_trabajamos', x.local) ? `<button onclick="redisVolverASugerir(${_noTrabaja.indexOf(x)})" style="background:none;border:1px solid #e2e8f0;border-radius:8px;padding:5px 10px;font-size:12px;color:#0f6e56;cursor:pointer;white-space:nowrap;">↩ Volver a sugerir</button>` : ''}
     </div>`).join('');
   return `<details style="margin-top:6px;">
-    <summary style="cursor:pointer;font-weight:700;font-size:13px;color:#475569;">🚫 Productos que no trabajamos ${esAdmin ? '' : 'en ' + (LOCAL_LABEL[miLocalStock] || miLocalStock)} <span style="color:#94a3b8;font-weight:500;">(${lista.length})</span></summary>
+    <summary style="cursor:pointer;font-weight:700;font-size:13px;color:#475569;">🚫 Productos que no trabajamos ${opeTodos() ? '' : 'en ' + (LOCAL_LABEL[miLocalStock] || miLocalStock)} <span style="color:#94a3b8;font-weight:500;">(${lista.length})</span></summary>
     <div style="font-size:12px;color:#64748b;margin:6px 0;">No se sugieren en la redistribución de los lunes. Si el local empieza a trabajar uno, tocá "Volver a sugerir".</div>
     <div style="border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">${filas}</div>
   </details>`;
@@ -2292,9 +2334,10 @@ async function redisNoTrabaja(id) {
     + `¿En ${local} no trabajan este producto?\nNo se va a volver a sugerir para ${local} en los próximos listados `
     + `(se puede deshacer abajo, en "Productos que no trabajamos").\n\nMotivo (opcional):`, '');
   if (motivo === null) return;
-  if (!await registrarQuien('stock.no_trabajamos', { accion: 'no lo trabajamos', sku: s.sku, local: s.local_destino, motivo: motivo || null })) return;
+  const reg = await registrarQuien('stock.no_trabajamos', { accion: 'no lo trabajamos', sku: s.sku, local: s.local_destino, motivo: motivo || null }, s.local_destino);
+  if (!reg) return;
   try {
-    const { error } = await sb.rpc('stock_marcar_no_trabaja', { p_sku: s.sku, p_local: s.local_destino, p_motivo: motivo || null });
+    const { error } = await reg.db.rpc('stock_marcar_no_trabaja', { p_sku: s.sku, p_local: s.local_destino, p_motivo: motivo || null });
     if (error) throw error;
     toast('🚫 Listo — no se sugiere más para ' + local);
     cargarRedistribucion();
@@ -2303,9 +2346,10 @@ async function redisNoTrabaja(id) {
 
 async function redisAhoraNo(id) {
   const s = _redisCache.find(x => x.id === id);
-  if (!await registrarQuien('stock.redistribucion', { accion: 'ahora no', sugerencia: id, sku: s?.sku || null, de: s?.local_origen || null, a: s?.local_destino || null })) return;
+  const reg = await registrarQuien('stock.redistribucion', { accion: 'ahora no', sugerencia: id, sku: s?.sku || null, de: s?.local_origen || null, a: s?.local_destino || null }, s?.local_destino);
+  if (!reg) return;
   try {
-    const { error } = await sb.rpc('stock_descartar_sugerencia', { p_id: id });
+    const { error } = await reg.db.rpc('stock_descartar_sugerencia', { p_id: id });
     if (error) throw error;
     toast('Descartada por esta semana');
     cargarRedistribucion();
@@ -2317,9 +2361,10 @@ async function redisVolverASugerir(i) {
   if (!x) return;
   const sku = x.sku, local = x.local;
   if (!confirm(`¿${LOCAL_LABEL[local] || local} vuelve a trabajar ${sku}?\nSe va a poder sugerir de nuevo desde el lunes que viene.`)) return;
-  if (!await registrarQuien('stock.no_trabajamos', { accion: 'vuelve a trabajarlo', sku, local })) return;
+  const reg = await registrarQuien('stock.no_trabajamos', { accion: 'vuelve a trabajarlo', sku, local }, local);
+  if (!reg) return;
   try {
-    const { error } = await sb.rpc('stock_quitar_no_trabaja', { p_sku: sku, p_local: local });
+    const { error } = await reg.db.rpc('stock_quitar_no_trabaja', { p_sku: sku, p_local: local });
     if (error) throw error;
     toast('↩ Vuelve a sugerirse');
     cargarRedistribucion();
@@ -2371,11 +2416,11 @@ function renderHistorialTraslados() {
     // Anular: SOLO los pedidos que hizo MI local (admin puede con todos). La
     // decisión real la toma la RPC — esto es nada más para no mostrar un botón
     // que va a rebotar.
-    const puedoAnular = accionable && (esAdmin || x.local_solicitante === miLocalStock);
+    const puedoAnular = accionable && veoEn('stock.traslados', x.local_solicitante);
     // Ya apartado por el otro local → el que pidió puede PEDIR la cancelación
     // (el cliente no lo quiso); y el local que lo apartó CONFIRMA que lo liberó.
-    const puedoPedirCancel = x.estado === 'apartado' && (esAdmin || x.local_solicitante === miLocalStock);
-    const puedoLiberar     = x.estado === 'cancelacion_pedida' && (esAdmin || x.local_origen === miLocalStock);
+    const puedoPedirCancel = x.estado === 'apartado' && veoEn('stock.traslados', x.local_solicitante);
+    const puedoLiberar     = x.estado === 'cancelacion_pedida' && veoEn('stock.traslados', x.local_origen);
     const detalleEstado = x.estado === 'apartado' ? (x.respondido_por ? ' por ' + x.respondido_por : '')
       : x.estado === 'cancelacion_pedida' ? (x.cancel_motivo ? ' · ' + x.cancel_motivo : '')
       : x.estado === 'cancelado' ? (x.cancel_confirmada_por ? ' · liberó ' + x.cancel_confirmada_por.split('@')[0] : '')
@@ -2428,10 +2473,10 @@ async function anularTraslado(id) {
     : '';
   if (!confirm(`¿Anular el pedido de ${x.cantidad} × ${x.sku}?${aviso}`)) return;
   const motivo = prompt('¿Por qué se anula? (opcional — le llega al otro local)') || '';
-  const reg = await registrarQuien('stock.traslados', { accion: 'anular', traslado: id, sku: x.sku, cantidad: x.cantidad, a: x.local_origen, motivo: motivo || null });
+  const reg = await registrarQuien('stock.traslados', { accion: 'anular', traslado: id, sku: x.sku, cantidad: x.cantidad, a: x.local_origen, motivo: motivo || null }, x.local_solicitante);
   if (!reg) return;
   try {
-    const { data, error } = await sb.rpc('stock_anular_traslado', { p_id: id, p_motivo: motivo });
+    const { data, error } = await reg.db.rpc('stock_anular_traslado', { p_id: id, p_motivo: motivo });
     if (error) throw error;
     const quien = nombreRegistrado(reg) || await nombrePropio();
     await sb.functions.invoke('enviar-push', {
@@ -2460,10 +2505,10 @@ async function pedirCancelacionTraslado(id) {
   if (!x) return;
   const motivo = prompt(`${LOCAL_LABEL[x.local_origen] || x.local_origen} ya apartó ${x.cantidad} × ${x.sku}${x.respondido_por ? ' (' + x.respondido_por + ')' : ''}.\n\n¿Por qué se cancela? (obligatorio — le llega a quien lo apartó)`, 'El cliente no lo quiso');
   if (motivo === null) return;
-  const reg = await registrarQuien('stock.traslados', { accion: 'pedir cancelación', traslado: id, sku: x.sku, cantidad: x.cantidad, a: x.local_origen, motivo });
+  const reg = await registrarQuien('stock.traslados', { accion: 'pedir cancelación', traslado: id, sku: x.sku, cantidad: x.cantidad, a: x.local_origen, motivo }, x.local_solicitante);
   if (!reg) return;
   try {
-    const { data, error } = await sb.rpc('stock_traslado_pedir_cancelacion', { p_id: id, p_motivo: motivo });
+    const { data, error } = await reg.db.rpc('stock_traslado_pedir_cancelacion', { p_id: id, p_motivo: motivo });
     if (error) throw error;
     const quien = nombreRegistrado(reg) || await nombrePropio();
     await sb.functions.invoke('enviar-push', {
@@ -2488,10 +2533,10 @@ async function confirmarCancelacionTraslado(id) {
   const x = _trasHist.find(y => y.id === id);
   if (!x) return;
   if (!confirm(`¿Ya volviste a la venta ${x.cantidad} × ${x.sku}?${x.cancel_motivo ? '\n\nMotivo de la cancelación: ' + x.cancel_motivo : ''}`)) return;
-  const reg = await registrarQuien('stock.traslados', { accion: 'confirmar cancelación (liberado)', traslado: id, sku: x.sku, cantidad: x.cantidad, pidio: x.local_solicitante });
+  const reg = await registrarQuien('stock.traslados', { accion: 'confirmar cancelación (liberado)', traslado: id, sku: x.sku, cantidad: x.cantidad, pidio: x.local_solicitante }, x.local_origen);
   if (!reg) return;
   try {
-    const { data, error } = await sb.rpc('stock_traslado_confirmar_cancelacion', { p_id: id });
+    const { data, error } = await reg.db.rpc('stock_traslado_confirmar_cancelacion', { p_id: id });
     if (error) throw error;
     const quien = nombreRegistrado(reg) || await nombrePropio();
     const body = {
@@ -2530,7 +2575,7 @@ async function chequearTrasladoURL() {
     }
     if (t.estado === 'cancelacion_pedida') {
       _trasHist = [t];
-      if (esAdmin || t.local_origen === miLocalStock) { confirmarCancelacionTraslado(t.id); }
+      if (veoEn('stock.traslados', t.local_origen)) { confirmarCancelacionTraslado(t.id); }
       else toast(`Piden cancelar este traslado${t.cancel_motivo ? ': ' + t.cancel_motivo : ''} — falta que ${LOCAL_LABEL[t.local_origen] || t.local_origen} confirme que lo liberó`);
       return;
     }
@@ -2557,12 +2602,12 @@ function destinoSolicitante(t) {
 async function marcarRevisando() {
   if (!trasladoResp) return;
   const t = trasladoResp;
-  const reg = await registrarQuien('stock.traslados', { accion: 'lo busco', traslado: t.id, sku: t.sku, cantidad: t.cantidad, pidio: t.local_solicitante });
+  const reg = await registrarQuien('stock.traslados', { accion: 'lo busco', traslado: t.id, sku: t.sku, cantidad: t.cantidad, pidio: t.local_solicitante }, t.local_origen);
   if (!reg) return;
   t._reg = reg;   // al responder después en la misma ventana, se anota a la misma persona sin volver a preguntar
   const quien = nombreRegistrado(reg) || await nombrePropio();
   try {
-    const { data: filas, error } = await sb.from('stock_traslados')
+    const { data: filas, error } = await reg.db.from('stock_traslados')
       .update({ estado: 'revisando', revisando_por: quien, revisando_at: new Date().toISOString() })
       .eq('id', t.id).eq('estado', 'pendiente').select('id');
     if (error) throw error;
@@ -2594,14 +2639,14 @@ async function marcarRevisando() {
 async function responderTraslado(tiene) {
   if (!trasladoResp) return;
   const t = trasladoResp;
-  const reg = await registrarQuienYa('stock.traslados', t._reg, { accion: tiene ? 'lo tengo (apartado)' : 'no está', traslado: t.id, sku: t.sku, cantidad: t.cantidad, pidio: t.local_solicitante });
+  const reg = await registrarQuienYa('stock.traslados', t._reg, { accion: tiene ? 'lo tengo (apartado)' : 'no está', traslado: t.id, sku: t.sku, cantidad: t.cantidad, pidio: t.local_solicitante }, t.local_origen);
   if (!reg) return;   // la ventana del pedido queda abierta
   document.getElementById('trasresp-modal-bg').style.display = 'none';
   trasladoResp = null;
   const quien = nombreRegistrado(reg.omitido ? t._reg : reg) || await nombrePropio();
   const estado = tiene ? 'apartado' : 'sin_stock';
   try {
-    const { data: filas, error } = await sb.from('stock_traslados')
+    const { data: filas, error } = await reg.db.from('stock_traslados')
       .update({ estado, respondido_por: quien, respondido_at: new Date().toISOString() })
       .eq('id', t.id).in('estado', ['pendiente', 'revisando']).select('id');
     if (error) throw error;
@@ -2634,7 +2679,7 @@ function cardHtml(a) {
     const st = a.stocks[l];
     const tiene = st !== undefined;
     const cls = !tiene ? '' : (st > 0 ? 'ok' : 'cero');
-    return `<div class="stock-chip ${cls}" id="chip-${cssId(a.sku)}-${l}" ${tiene && st > 0 ? `onclick="abrirTraslado('${escAttr(a.sku)}','${l}')" style="cursor:pointer;" title="Pedir traslado desde ${LOCAL_LABEL[l]}"` : ''}>
+    return `<div class="stock-chip ${cls}" id="chip-${cssId(a.sku)}-${l}" ${tiene && st > 0 && veo('stock.traslados') ? `onclick="abrirTraslado('${escAttr(a.sku)}','${l}')" style="cursor:pointer;" title="Pedir traslado desde ${LOCAL_LABEL[l]}"` : ''}>
       <div class="loc">${LOCAL_LABEL[l]}</div>
       <div class="qty">${tiene ? fmtQty(st) : '—'}</div>
       <div class="live"></div>
@@ -2658,7 +2703,7 @@ function cardHtml(a) {
       <span style="display:flex;gap:6px;">
         ${(a.descripcion || '').trim().split(/\s+/).length > 1 ? `<button class="btn-live" onclick="verColores('${escAttr(a.sku)}')" title="Ver otros colores / variantes">🎨</button>` : ''}
         <button class="btn-live" onclick="compartirWA('${escAttr(a.sku)}')" title="Compartir por WhatsApp">${WA_SVG}</button>
-        <button class="btn-live" id="live-${cssId(a.sku)}" onclick="verificarEnVivo('${escAttr(a.sku)}')" title="Verificar stock en vivo contra los servers">⚡</button>
+        ${veo('stock.stock_ahora') ? `<button class="btn-live" id="live-${cssId(a.sku)}" onclick="verificarEnVivo('${escAttr(a.sku)}')" title="Verificar stock en vivo contra los servers">⚡</button>` : ''}
       </span>
     </div>
   </div>`;
@@ -2672,7 +2717,9 @@ const escAttr = s => String(s).replace(/'/g, "\\'").replace(/"/g, '&quot;');
 // VERIFICACIÓN EN VIVO (jobs stock_sku → daemons de cada local)
 // ═══════════════════════════════════════════════════════════════════
 async function verificarEnVivo(sku) {
-  if (!await registrarQuien('stock.stock_ahora', { sku })) return;
+  const reg = await registrarQuien('stock.stock_ahora', { sku });
+  if (!reg) return;
+  const db = reg.db;
   const btn = document.getElementById('live-' + cssId(sku));
   if (btn) { btn.disabled = true; btn.textContent = '⏳'; }
 
@@ -2684,7 +2731,7 @@ async function verificarEnVivo(sku) {
 
   let ids = [];
   try {
-    const { data, error } = await sb.from('dragonfish_jobs').insert(jobs).select('id, local');
+    const { data, error } = await db.from('dragonfish_jobs').insert(jobs).select('id, local');
     if (error) throw error;
     ids = data || [];
   } catch (e) {
@@ -2702,7 +2749,7 @@ async function verificarEnVivo(sku) {
   while (pendientes.size > 0 && (Date.now() - t0) < 60000) {
     await new Promise(r => setTimeout(r, 2500));
     try {
-      const { data } = await sb.from('dragonfish_jobs')
+      const { data } = await db.from('dragonfish_jobs')
         .select('id, estado, payload').in('id', [...pendientes]);
       for (const j of (data || [])) {
         if (j.estado === 'completado' && j.payload) {
@@ -2797,8 +2844,8 @@ mostrarVacio();
   }, true);
 })();
 </script>
-<script src="manual.js?v=12"></script>
-<script src="inventario.js?v=3"></script>
+<script src="manual.js?v=13"></script>
+<script src="inventario.js?v=4"></script>
 <script>
 // (24-ago) Blindaje iOS: re-suscripcion automatica de push (ver regla en
 // las otras apps). Solo si el permiso esta concedido y esta usuaria ya

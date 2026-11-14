@@ -1,7 +1,7 @@
 // Service Worker — Stock Adorno
-const CACHE_VERSION = 'stock-adorno-v92-registra-quien';
+const CACHE_VERSION = 'stock-adorno-v93-permisos-hub';
 const CACHE_ASSETS = ['./', './index.html',
-  './manual.js', './inventario.js', './manifest.webmanifest', './favicon.svg'];
+  './manual.js', './inventario.js', './permisos.js', './manifest.webmanifest', './favicon.svg'];
 
 self.addEventListener('install', e => {
   e.waitUntil(

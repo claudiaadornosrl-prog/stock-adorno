@@ -9,8 +9,9 @@ function _mEsc(s) {
 }
 
 function _manualSecciones() {
-  const gerente = (typeof esGerente !== 'undefined' && esGerente) ||
-                  (typeof esAdmin !== 'undefined' && esAdmin);
+  // (14-nov-2026) Redistribución sale si el perfil la tiene en el Hub (Permisos); sin permisos cargados, como antes
+  const gerente = typeof veo === 'function' ? veo('stock.redistribucion')
+    : (typeof esGerente !== 'undefined' && esGerente) || (typeof esAdmin !== 'undefined' && esAdmin);
 
   const base = [
     { icon: '🧭', titulo: 'La barra de arriba', desc: 'Es igual en todos los módulos: mismo lugar para cada cosa y el color de la moneda del módulo (el mismo del Hub).',
@@ -27,7 +28,7 @@ function _manualSecciones() {
     },
     {
       icon: '🏢', titulo: 'Las compus de la oficina',
-      desc: 'La compu de Marisa (administracion@) y la de Analía (claudiaadorno@) usan cuentas de la oficina, sin usuario personal. En Stock tienen acceso completo, las dos por igual.',
+      desc: 'La compu de Marisa (administracion@) y la de Analía (claudiaadorno@) usan cuentas de la oficina, sin usuario personal. Lo que pueden hacer lo define el perfil Oficina del Hub: hoy, acceso completo en Stock, las dos por igual.',
       pasos: [
         'Ven Redistribución, pueden agregar (＋) y editar (✏️) modelos de las Listas y marcar "No lo trabajamos" / "Volver a sugerir" para cualquier local.',
         'En Inventario ven todos los inventarios de los tres locales con todas sus hojas.',
@@ -44,6 +45,18 @@ function _manualSecciones() {
         'Si cerrás esa ventana, la operación no se hace (no se pierde lo que escribiste: el pedido, la hoja o lo leído siguen ahí).',
         'Al pedir un traslado y al "Lo busco", "Lo tengo" o "No está" desde la cuenta compartida, el nombre que tocaste es el que le aparece al otro local. Si primero tocaste "Lo busco", al responder no te lo vuelve a preguntar.',
         'Lo anotado lo ve JP en Hub → Permisos → Registro: quién, cuándo, con qué cuenta y qué hizo. La foto nunca se guarda.',
+      ],
+    },
+    {
+      icon: '🔐', titulo: 'Qué puede hacer cada uno (permisos del Hub)',
+      desc: 'Lo que ve y puede hacer cada persona en Stock lo decide JP en el Hub (ícono de persona → Permisos), función por función y según el perfil (vendedora, cajera, depósito, encargada, local, oficina, administrativa).',
+      pasos: [
+        'Si una función está apagada para tu perfil, no aparece: ni la pestaña ni el botón (por ejemplo Redistribución, el ＋ y ✏️ de Listas, el ⚡, "Armar cuatrimestre" o "Publicar").',
+        'Si está en "pide permiso", el botón aparece pero al tocarlo se abre "Pedir autorización": alguien que tenga esa función habilitada (la encargada o administración) pone SU usuario personal y su clave (y el código del celular si lo tiene activado), y la operación se graba a su nombre. Las cuentas de los locales y de la oficina no autorizan. No queda abierta en ese equipo.',
+        'Para mirar un apartado que está en "pide permiso" (por ejemplo Listas o Buscar), alcanza con que autoricen una vez: queda abierto hasta recargar la página.',
+        'Todo va por local: cada uno pide, responde, anula o cancela los traslados, decide la redistribución y "No lo trabajamos", ordena la lista y arma, cuenta o controla el inventario de SUS locales (los que tiene cargados en el Hub). Para hacerlo por otro local hace falta "Pedir o decidir en nombre de otro local" (hoy lo tienen la oficina y administración): con eso también se ven las sugerencias y los "no lo trabajamos" de todos los locales.',
+        'Si al tocar algo dice "Tu perfil no tiene habilitado…", pedíselo a administración: se cambia en Hub → Permisos.',
+        'La base de datos controla lo mismo: aunque alguien arme el pedido a mano, sin el permiso no se graba.',
       ],
     },
     {
@@ -91,7 +104,7 @@ function _manualSecciones() {
         'Al local le llega una notificación; la respuesta pasa por: pendiente → revisando → apartado o sin stock.',
         'Cuando respondan, te llega el aviso a vos con el resultado. Si lo pediste desde una compu con la cuenta del local o de la oficina (sin usuario personal), el aviso llega a las compus de ese local.',
         'Antes de pedir, mirá el apartado Traslados (el camioncito de arriba) — capaz otra compañera ya lo pidió.',
-        'Si te arrepentís, lo anulás desde Traslados con el 🗑 (solo los pedidos de tu local).',
+        'Si te arrepentís, lo anulás desde Traslados con el 🗑 (solo los pedidos de tu local). Pedir traslados depende de tu perfil en el Hub: si no lo tenés, el stock de los otros locales se ve pero no se puede tocar para pedir.',
         '↩ Si el otro local YA lo apartó y el cliente después no lo quiso, no alcanza con anular: hay mercadería separada en otro local. Tocás "↩ Cancelar" en Traslados, ponés el motivo, y al otro local le llega el aviso para que la vuelva a la venta. El pedido queda como "Piden cancelar" hasta que ellos toquen "✔ Liberado" — recién ahí te llega la confirmación y queda como Cancelado.',
       ],
     },
@@ -102,7 +115,7 @@ function _manualSecciones() {
         'Apartado Traslados (el camioncito, en la barra de arriba) → ves cada solicitud con su estado y quién la hizo.',
         'Podés buscar por artículo o local.',
         'Si una solicitud está pendiente y es para tu local, tocála para responderla desde ahí.',
-        'Cada local solo puede responder o modificar los pedidos donde está: el local que tiene la mercadería o el que la pidió. Los pedidos entre otros dos locales se ven, pero no se pueden tocar. La oficina y administración pueden con todos.',
+        'Cada local solo puede responder o modificar los pedidos donde está: el local que tiene la mercadería o el que la pidió. Los pedidos entre otros dos locales se ven, pero no se pueden tocar. Quien tiene "Pedir o decidir en nombre de otro local" en el Hub (la oficina y administración) puede con todos.',
         '🗑 Anular: en los pedidos que hizo TU local aparece el tacho. Anula el pedido y le avisa al otro local — importante si ya lo estaban buscando. No se borra: queda como 🚫 Anulado, con quién lo anuló y por qué.',
         'Los pedidos del otro local no tienen tacho: cada local anula los propios.',
         '↩ "Piden cancelar": si vos habías apartado la mercadería y el otro local pide cancelar, te llega el aviso con el motivo. Volvés el artículo a la venta y tocás "✔ Liberado": eso confirma la cancelación y le avisa a quien lo había pedido. Hasta que no confirmes, el pedido sigue vivo — así nadie se queda con mercadería apartada de más ni la vende dos veces.',
@@ -120,9 +133,9 @@ function _manualSecciones() {
   ];
 
   if (gerente) {
-    base.splice(8, 0, {   // antes de Traslados (11-nov: +1 por "La barra de arriba"; 12-nov: +1 por "Las compus de la oficina")
-      icon: '🔄', titulo: 'Redistribución (encargadas)',
-      desc: 'Todos los lunes el sistema sugiere traslados entre sucursales: artículos que un local tiene de sobra y a otro le faltan.',
+    base.splice(Math.max(0, base.findIndex(s => s.titulo === 'Pedir traslado')), 0, {   // antes de Pedir traslado (14-nov: se busca por título)
+      icon: '🔄', titulo: 'Redistribución',
+      desc: 'Todos los lunes el sistema sugiere traslados entre sucursales: artículos que un local tiene de sobra y a otro le faltan. La ven los perfiles que la tienen habilitada en el Hub (encargadas, cuentas de los locales y la oficina).',
       pasos: [
         'Los lunes a la mañana te llega una notificación con las sugerencias nuevas.',
         'En el apartado Redistribución (las dos flechas, en la barra de arriba) ves cada sugerencia: qué artículo, cuánto sobra en el origen y cuánto falta en destino.',

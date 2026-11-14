@@ -17,6 +17,10 @@
 // ═══════════════════════════════════════════════════════════════════════
 const INV = { local: null, ciclo: null, hoja: null, hojas: [], mis: [], ciclos: [], emps: [] };
 const LOCAL_NOMBRE = { alcorta: 'Alcorta', unicenter: 'Unicenter', oficina: 'Oficina' };
+// (14-nov-2026) quién ve qué lo deciden los permisos del Hub (permisos.js): invTodos = ve y elige cualquier local
+// («operar en nombre de otro local»); invGestiona = puede armar o controlar el inventario del local que mira.
+const invTodos = () => opeTodos();
+const invGestiona = () => ['stock.inv_armar', 'stock.inv_controlar'].some(f => veoEn(f, invTodos() ? (INV.local || miLocalStock) : miLocalStock));
 const invFecha = f => f ? f.split('-').reverse().join('/') : '';
 const invEstado = e => ({ pendiente: '⬜ Pendiente', contando: '✏️ Contando', contada: '📨 Contada · a controlar', controlada: '✅ Controlada' }[e] || e);
 const invN = v => (v === null || v === undefined) ? '' : String(v);
@@ -27,7 +31,7 @@ async function invInit() {
   INV.local = INV.local || miLocalStock;
   const [mis, ciclos] = await Promise.all([
     sb.rpc('stock_inv_mis_hojas'),
-    (esAdmin || esGerente) ? sb.rpc('stock_inv_ciclos', { p_local: esAdmin ? null : miLocalStock }) : Promise.resolve({ data: [] }),
+    (invGestiona()) ? sb.rpc('stock_inv_ciclos', { p_local: invTodos() ? null : miLocalStock }) : Promise.resolve({ data: [] }),
   ]);
   INV.mis = mis.data || []; INV.ciclos = ciclos.data || [];
   invRenderInicio();
@@ -35,8 +39,8 @@ async function invInit() {
 
 function invRenderInicio() {
   const c = document.getElementById('view-inventario');
-  const gest = esAdmin || esGerente;
-  const ciclos = INV.ciclos.filter(x => esAdmin ? (!INV.local || x.local === INV.local) : true);
+  const gest = invGestiona();
+  const ciclos = INV.ciclos.filter(x => invTodos() ? (!INV.local || x.local === INV.local) : true);
   c.innerHTML = `
     ${INV.mis.length || !gest ? `<div class="card inv-card">
       <h3 class="inv-h3">📋 Mis hojas de inventario</h3>
@@ -52,15 +56,15 @@ function invRenderInicio() {
 
     ${gest ? `<div class="card inv-card">
       <div class="inv-row">
-        <h3 class="inv-h3" style="flex:1">🗂 Inventarios de ${esAdmin ? '' : LOCAL_NOMBRE[miLocalStock]}</h3>
-        ${esAdmin ? `<select onchange="INV.local=this.value;invRenderInicio()" class="inv-sel">
+        <h3 class="inv-h3" style="flex:1">🗂 Inventarios de ${invTodos() ? '' : LOCAL_NOMBRE[miLocalStock]}</h3>
+        ${invTodos() ? `<select onchange="INV.local=this.value;invRenderInicio()" class="inv-sel">
           ${['alcorta','unicenter','oficina'].map(l => `<option value="${l}" ${INV.local === l ? 'selected' : ''}>${LOCAL_NOMBRE[l]}</option>`).join('')}</select>` : ''}
-        <button class="inv-btn" onclick="invNuevoCiclo()">➕ Armar cuatrimestre</button>
+        ${veoEn('stock.inv_armar', invTodos() ? (INV.local || 'oficina') : miLocalStock) ? `<button class="inv-btn" onclick="invNuevoCiclo()">➕ Armar cuatrimestre</button>` : ''}
       </div>
       ${ciclos.length ? ciclos.map(x => {
         const pct = x.skus ? Math.round(x.skus_controlados * 100 / x.skus) : 0;
         return `<div class="inv-hoja" onclick="invAbrirCiclo(${x.id})">
-          <div class="inv-hoja-top"><b>${x.anio} · C${x.cuatri}</b> <span class="inv-mini">${invFecha(x.desde)} → ${invFecha(x.hasta)}${esAdmin ? ' · ' + LOCAL_NOMBRE[x.local] : ''}</span>
+          <div class="inv-hoja-top"><b>${x.anio} · C${x.cuatri}</b> <span class="inv-mini">${invFecha(x.desde)} → ${invFecha(x.hasta)}${invTodos() ? ' · ' + LOCAL_NOMBRE[x.local] : ''}</span>
             <span class="inv-chip ${x.estado}">${x.estado === 'borrador' ? '📝 Borrador (no publicado)' : x.estado === 'publicado' ? '🟢 En curso' : '🔒 Cerrado'}</span></div>
           <div class="inv-barra"><div style="width:${pct}%"></div></div>
           <div class="inv-mini">${x.hojas} hojas · ${x.controladas} controladas · ${x.contadas} a controlar · ${x.contando} contando · ${x.pendientes} pendientes
@@ -72,7 +76,7 @@ function invRenderInicio() {
 
 // ── Armar cuatrimestre ───────────────────────────────────────────────
 async function invNuevoCiclo() {
-  const local = esAdmin ? (INV.local || 'oficina') : miLocalStock;
+  const local = invTodos() ? (INV.local || 'oficina') : miLocalStock;
   const { data: emps, error } = await sb.rpc('stock_inv_empleados', { p_local: local });
   if (error) { toast('No pude leer el personal: ' + error.message); return; }
   const hoy = new Date(), anio = hoy.getFullYear(), cuatri = Math.floor(hoy.getMonth() / 4) + 1;
@@ -99,8 +103,9 @@ async function invGenerar(local) {
   const ids = [...document.querySelectorAll('#view-inventario input[type=checkbox]:checked')].map(i => +i.value);
   if (!ids.length) { toast('Marcá al menos una persona.'); return; }
   const anio = +document.getElementById('inv-anio').value, cuatri = +document.getElementById('inv-cuatri').value;
-  if (!await registrarQuien('stock.inv_armar', { accion: 'generar hojas', local, anio, cuatri, personas: ids.length })) return;
-  const { data, error } = await sb.rpc('stock_inv_generar', { p_local: local, p_anio: anio, p_cuatri: cuatri, p_empleados: ids });
+  const reg = await registrarQuien('stock.inv_armar', { accion: 'generar hojas', local, anio, cuatri, personas: ids.length }, local);
+  if (!reg) return;
+  const { data, error } = await reg.db.rpc('stock_inv_generar', { p_local: local, p_anio: anio, p_cuatri: cuatri, p_empleados: ids });
   if (error) { toast(error.message); return; }
   toast(`✓ ${data.hojas} hojas armadas. Revisalas y publicá.`);
   await invInit(); invAbrirCiclo(data.ciclo_id);
@@ -121,8 +126,8 @@ async function invAbrirCiclo(id) {
   c.innerHTML = `<div class="card inv-card">
     <div class="inv-row"><button class="inv-btn gh" onclick="invInit()">‹ Volver</button>
       <h3 class="inv-h3" style="flex:1">${ciclo.anio} · C${ciclo.cuatri} · ${LOCAL_NOMBRE[ciclo.local]}</h3>
-      ${ciclo.estado === 'borrador' ? `<button class="inv-btn" onclick="invPublicar(${id})">📣 Publicar</button>
-        <button class="inv-btn gh" style="color:#b91c1c" onclick="invBorrarCiclo(${id})">Borrar</button>` : `<span class="inv-chip ${ciclo.estado}">${ciclo.estado === 'publicado' ? '🟢 En curso' : '🔒 Cerrado'}</span>`}
+      ${ciclo.estado === 'borrador' ? (veoEn('stock.inv_armar', ciclo.local) ? `<button class="inv-btn" onclick="invPublicar(${id})">📣 Publicar</button>
+        <button class="inv-btn gh" style="color:#b91c1c" onclick="invBorrarCiclo(${id})">Borrar</button>` : '<span class="inv-chip borrador">📝 Borrador</span>') : `<span class="inv-chip ${ciclo.estado}">${ciclo.estado === 'publicado' ? '🟢 En curso' : '🔒 Cerrado'}</span>`}
     </div>
     <p class="inv-mini">${ciclo.estado === 'borrador' ? 'Borrador: las vendedoras todavía no lo ven. Podés cambiar persona o semana de cualquier hoja y después publicar.' : 'Tocá una hoja contada para controlarla. Las pendientes se pueden reasignar.'}</p>
     <div class="inv-mini" style="margin:6px 0 10px">${Object.entries(porPersona).map(([n, p]) => `<span class="inv-chip">${escHtml(n)}: ${p.ok}/${p.n}${p.dif ? ` · ${p.dif} dif` : ''}</span>`).join(' ')}</div>
@@ -133,7 +138,7 @@ async function invAbrirCiclo(id) {
           <div class="inv-hoja-top"><b>${escHtml(h.empleado_nombre || '—')}</b> <span class="inv-chip">${invEstado(h.estado)}</span></div>
           <div class="inv-hoja-tit">${escHtml(h.titulo)}</div>
           <div class="inv-mini">${h.skus} SKU · ${Math.round(h.unidades)} unidades${h.con_diferencia ? ` · <b style="color:#b45309">${h.con_diferencia} con diferencia</b>` : ''}${h.controlada_at ? ` · controlada ${invFecha(String(h.controlada_at).slice(0, 10))}` : ''}</div>
-          ${h.estado === 'pendiente' ? `<div class="inv-row" style="margin-top:6px" onclick="event.stopPropagation()">
+          ${h.estado === 'pendiente' && veoEn('stock.inv_armar', ciclo.local) ? `<div class="inv-row" style="margin-top:6px" onclick="event.stopPropagation()">
             <select class="inv-sel" onchange="invReasignar(${h.id}, +this.value, null)"><option value="">↔ persona…</option>${INV.emps.map(e => `<option value="${e.id}" ${e.id === h.empleado_id ? 'selected' : ''}>${escHtml(e.nombre)}</option>`).join('')}</select>
             <select class="inv-sel" onchange="invReasignar(${h.id}, null, +this.value)">${Array.from({ length: 16 }, (_, i) => `<option value="${i + 1}" ${i + 1 === h.semana ? 'selected' : ''}>Semana ${i + 1}</option>`).join('')}</select>
           </div>` : ''}
@@ -144,15 +149,17 @@ async function invAbrirCiclo(id) {
 const invSumar = (iso, d) => { const x = new Date(iso + 'T12:00:00'); x.setDate(x.getDate() + d); return x.toISOString().slice(0, 10); };
 async function invReasignar(hoja, emp, semana) {
   // si cierra la ventana de quién, se vuelve a pintar el ciclo para que el desplegable muestre lo guardado
-  if (!await registrarQuien('stock.inv_armar', { accion: 'mover hoja', hoja, empleado: emp, semana })) { invAbrirCiclo(INV.ciclo.id); return; }
-  const { error } = await sb.rpc('stock_inv_reasignar', { p_hoja: hoja, p_empleado: emp, p_semana: semana });
+  const reg = await registrarQuien('stock.inv_armar', { accion: 'mover hoja', hoja, empleado: emp, semana }, INV.ciclo?.local);
+  if (!reg) { invAbrirCiclo(INV.ciclo.id); return; }
+  const { error } = await reg.db.rpc('stock_inv_reasignar', { p_hoja: hoja, p_empleado: emp, p_semana: semana });
   if (error) { toast(error.message); return; }
   toast('✓ Hoja movida'); invAbrirCiclo(INV.ciclo.id);
 }
 async function invPublicar(id) {
   if (!confirm('Publicar el cuatrimestre: a partir de ahora cada persona ve sus hojas y puede empezar a contar. ¿Confirmás?')) return;
-  if (!await registrarQuien('stock.inv_armar', { accion: 'publicar', ciclo: id, local: INV.ciclo?.local || null })) return;
-  const { error } = await sb.rpc('stock_inv_publicar', { p_ciclo: id });
+  const reg = await registrarQuien('stock.inv_armar', { accion: 'publicar', ciclo: id, local: INV.ciclo?.local || null }, INV.ciclo?.local);
+  if (!reg) return;
+  const { error } = await reg.db.rpc('stock_inv_publicar', { p_ciclo: id });
   if (error) { toast(error.message); return; }
   // aviso a cada persona con hojas
   const porEmp = {}; INV.hojas.forEach(h => { if (h.empleado_id) porEmp[h.empleado_id] = (porEmp[h.empleado_id] || 0) + 1; });
@@ -164,8 +171,9 @@ async function invPublicar(id) {
 }
 async function invBorrarCiclo(id) {
   if (!confirm('¿Borrar este borrador con todas sus hojas?')) return;
-  if (!await registrarQuien('stock.inv_armar', { accion: 'borrar borrador', ciclo: id, local: INV.ciclo?.local || null })) return;
-  const { error } = await sb.rpc('stock_inv_borrar_ciclo', { p_ciclo: id });
+  const reg = await registrarQuien('stock.inv_armar', { accion: 'borrar borrador', ciclo: id, local: INV.ciclo?.local || null }, INV.ciclo?.local);
+  if (!reg) return;
+  const { error } = await reg.db.rpc('stock_inv_borrar_ciclo', { p_ciclo: id });
   if (error) { toast(error.message); return; }
   toast('Borrado'); invInit();
 }
@@ -274,12 +282,13 @@ async function invGuardarConteo(cerrar) {
     (inp.dataset.ronda === '2' ? r2 : r1).push(it);
   });
   if (!r1.length && !r2.length && !cerrar) { toast('No escribiste ninguna cantidad.'); return; }
-  if (!await registrarQuien('stock.inv_contar', { accion: cerrar ? 'terminar hoja' : 'guardar conteo', hoja: h.id, titulo: h.titulo, semana: h.semana, articulos: r1.length + r2.length })) return;
+  const reg = await registrarQuien('stock.inv_contar', { accion: cerrar ? 'terminar hoja' : 'guardar conteo', hoja: h.id, titulo: h.titulo, semana: h.semana, articulos: r1.length + r2.length }, h.local);
+  if (!reg) return;
   let res = null;
-  if (r1.length) { const { data, error } = await sb.rpc('stock_inv_contar', { p_hoja: h.id, p_items: r1, p_ronda: 1 }); if (error) { toast(error.message); return; } res = data; }
-  if (r2.length) { const { data, error } = await sb.rpc('stock_inv_contar', { p_hoja: h.id, p_items: r2, p_ronda: 2 }); if (error) { toast(error.message); return; } res = data; }
+  if (r1.length) { const { data, error } = await reg.db.rpc('stock_inv_contar', { p_hoja: h.id, p_items: r1, p_ronda: 1 }); if (error) { toast(error.message); return; } res = data; }
+  if (r2.length) { const { data, error } = await reg.db.rpc('stock_inv_contar', { p_hoja: h.id, p_items: r2, p_ronda: 2 }); if (error) { toast(error.message); return; } res = data; }
   if (cerrar) {
-    const { data, error } = await sb.rpc('stock_inv_cerrar', { p_hoja: h.id });
+    const { data, error } = await reg.db.rpc('stock_inv_cerrar', { p_hoja: h.id });
     if (error) { toast(error.message); await invAbrirHoja(h.id); return; }
     try { await sb.functions.invoke('enviar-push', { body: { local: h.local, app: 'stock', title: '📋 Hoja de inventario terminada',
       body: `${h.empleado_nombre || 'Una vendedora'} terminó "${h.titulo.slice(0, 50)}" (semana ${h.semana})${data.con_diferencia ? ` · ${data.con_diferencia} artículo(s) con diferencia` : ' · sin diferencias'}. Entrá a Stock › Inventario para controlarla.`,
@@ -293,8 +302,9 @@ async function invGuardarConteo(cerrar) {
 async function invAgregarSku() {
   const sku = document.getElementById('inv-extra-sku').value.trim(), cant = document.getElementById('inv-extra-cant').value;
   if (!sku || cant === '') { toast('Poné el SKU y la cantidad.'); return; }
-  if (!await registrarQuien('stock.inv_contar', { accion: 'agregar artículo', hoja: INV.hoja.hoja.id, sku, cantidad: Number(cant) })) return;
-  const { data, error } = await sb.rpc('stock_inv_agregar_sku',{ p_hoja: INV.hoja.hoja.id, p_sku: sku, p_cantidad: Number(cant) });
+  const reg = await registrarQuien('stock.inv_contar', { accion: 'agregar artículo', hoja: INV.hoja.hoja.id, sku, cantidad: Number(cant) }, INV.hoja.hoja.local);
+  if (!reg) return;
+  const { data, error } = await reg.db.rpc('stock_inv_agregar_sku',{ p_hoja: INV.hoja.hoja.id, p_sku: sku, p_cantidad: Number(cant) });
   if (error) { toast(error.message); return; }
   toast('✓ Agregado ' + data.sku); invAbrirHoja(INV.hoja.hoja.id);
 }
@@ -353,8 +363,9 @@ async function invGuardarControl(cerrar) {
     if (it.recuento != null || it.decision) items.push(it);
   });
   if (cerrar && !confirm('Marcar la hoja como controlada. Después no se edita. ¿Cargaste (o vas a cargar) los ajustes en el Dragonfish con motivo INV?')) return;
-  if (!await registrarQuien('stock.inv_controlar', { accion: cerrar ? 'marcar controlada' : 'guardar control', hoja: h.id, titulo: h.titulo, articulos: items.length })) return;
-  const { data, error } = await sb.rpc('stock_inv_controlar', { p_hoja: h.id, p_items: items, p_cerrar: cerrar, p_obs: document.getElementById('inv-obs')?.value || null });
+  const reg = await registrarQuien('stock.inv_controlar', { accion: cerrar ? 'marcar controlada' : 'guardar control', hoja: h.id, titulo: h.titulo, articulos: items.length }, h.local);
+  if (!reg) return;
+  const { data, error } = await reg.db.rpc('stock_inv_controlar', { p_hoja: h.id, p_items: items, p_cerrar: cerrar, p_obs: document.getElementById('inv-obs')?.value || null });
   if (error) { toast(error.message); return; }
   toast(cerrar ? '✓ Hoja controlada' : '✓ Guardado');
   await invAbrirHoja(h.id);

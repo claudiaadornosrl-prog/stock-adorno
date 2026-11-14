@@ -8,6 +8,8 @@
 <meta name="theme-color" content="#1565c0">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.min.js" integrity="sha384-UagCvVPT5XXA0Hx+nJYUAGBFseHT9zBgpJMSebsAxl9lciTwbT+39j5VfRjdP5Tp" crossorigin="anonymous"></script>
 <script src="/hub/caras.js?v=4" defer></script><!-- (14-nov-2026) "📷 Registra quién" por función (Hub → Permisos) -->
+<script src="/hub/seguridad.js?v=1" defer></script><!-- (14-nov-2026) código del celular de quien autoriza -->
+<script src="permisos.js?v=1"></script><!-- (14-nov-2026) permisos por función desde el Hub -->
 <style>
 @font-face { font-family: 'URW Gothic'; src: url('fonts/URWGothic-Book.ttf') format('truetype'); font-weight: 300 700; font-display: swap; }
 :root { --primary: #1565c0; --primary-dark: #0d47a1; --bg: #f6f8fb; --card: #fff; --border: #e5e7eb;
@@ -418,6 +420,11 @@ $('b-guardar').addEventListener('click', async () => {
   if ($('local').value) fila.local = $('local').value;
   // (14-nov-2026) "📷 Registra quién" del Hub: si JP marcó esta función, antes de guardar se pide quién leyó
   // (cara o nombre de la lista; con usuario personal se anota solo). Si cierra la ventana, no se guarda (lo leído queda).
+  // (14-nov-2026) permiso del Hub (stock.rfid_leer): sin permiso no se guarda; si pide permiso, autoriza alguien que la
+  // tenga y la pasada se guarda con SU sesión (queda a su nombre). Lo leído no se pierde.
+  if (!PERM) await cargarPermisos();
+  const db = await clientePara('stock.rfid_leer', null);
+  if (!db) { btn.disabled = false; return; }
   let reg;
   try {
     if (window.ADORNO_CARAS?.registrar) {
@@ -427,8 +434,9 @@ $('b-guardar').addEventListener('click', async () => {
       reg = e1 ? { ok: false, motivo: 'error', error: e1.message } : (c?.registra ? { ok: false, motivo: 'error', error: 'recargá la página y probá de nuevo' } : { ok: true });
     }
   } catch (e) { reg = { ok: false, motivo: 'error', error: e.message || String(e) }; }
-  if (!reg.ok) { btn.disabled = false; if (reg.motivo === 'error') toast('No pude anotar quién leyó: ' + reg.error); return; }
-  const { data, error } = await sb.from('stock_rfid_lecturas').insert(fila).select('id').single();
+  if (!reg.ok) { soltarCli(db); btn.disabled = false; if (reg.motivo === 'error') toast('No pude anotar quién leyó: ' + reg.error); return; }
+  const { data, error } = await db.from('stock_rfid_lecturas').insert(fila).select('id').single();
+  soltarCli(db);
   btn.disabled = false;
   if (error) { toast('No se pudo guardar: ' + error.message); return; }
   toast('Pasada #' + data.id + ' guardada · ' + $('k-unid').textContent + ' unidades en ' + lugar);
