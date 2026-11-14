@@ -36,6 +36,17 @@ function _manualSecciones() {
       ],
     },
     {
+      icon: '📷', titulo: 'Quién lo hizo (📷 Registra quién)',
+      desc: 'Si JP marcó una función con "📷 Registra quién" en el Hub, al usarla se pide quién la está haciendo (por la cara, o tocando tu nombre en la lista); con usuario personal se anota solo.',
+      pasos: [
+        'En Stock pueden pedirlo: pedir, anular o cancelar un traslado y responderlo ("Lo busco", "Lo tengo", "No está"); "Ahora no" y "No lo trabajamos" / "Volver a sugerir" de Redistribución; agregar, editar, borrar u ordenar modelos de las Listas; el ⚡ stock al momento; armar, publicar o borrar el inventario y mover hojas; guardar o terminar una hoja de conteo y agregar un artículo; el control de la encargada; y guardar una pasada del lector RFID.',
+        'Con la cuenta del local o de la oficina aparecen en pastillas los nombres de la gente del local: tocá el tuyo. Si venís de otro local, "Ver todos los locales".',
+        'Si cerrás esa ventana, la operación no se hace (no se pierde lo que escribiste: el pedido, la hoja o lo leído siguen ahí).',
+        'Al pedir un traslado y al "Lo busco", "Lo tengo" o "No está" desde la cuenta compartida, el nombre que tocaste es el que le aparece al otro local. Si primero tocaste "Lo busco", al responder no te lo vuelve a preguntar.',
+        'Lo anotado lo ve JP en Hub → Permisos → Registro: quién, cuándo, con qué cuenta y qué hizo. La foto nunca se guarda.',
+      ],
+    },
+    {
       icon: '🔎', titulo: 'Buscar artículos',
       desc: 'Stock, precio y foto de cualquier artículo en los 3 locales.',
       pasos: [

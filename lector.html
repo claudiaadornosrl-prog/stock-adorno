@@ -7,6 +7,7 @@
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <meta name="theme-color" content="#1565c0">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.min.js" integrity="sha384-UagCvVPT5XXA0Hx+nJYUAGBFseHT9zBgpJMSebsAxl9lciTwbT+39j5VfRjdP5Tp" crossorigin="anonymous"></script>
+<script src="/hub/caras.js?v=4" defer></script><!-- (14-nov-2026) "📷 Registra quién" por función (Hub → Permisos) -->
 <style>
 @font-face { font-family: 'URW Gothic'; src: url('fonts/URWGothic-Book.ttf') format('truetype'); font-weight: 300 700; font-display: swap; }
 :root { --primary: #1565c0; --primary-dark: #0d47a1; --bg: #f6f8fb; --card: #fff; --border: #e5e7eb;
@@ -415,6 +416,18 @@ $('b-guardar').addEventListener('click', async () => {
     codigos: [...etiquetas.values()].map(x => { const o = { c: x.epc + x.tid, n: x.n, t: x.t }; if (x.sku) o.txt = x.sku; if (x.tid) o.tid = x.tid; return o; })
   };
   if ($('local').value) fila.local = $('local').value;
+  // (14-nov-2026) "📷 Registra quién" del Hub: si JP marcó esta función, antes de guardar se pide quién leyó
+  // (cara o nombre de la lista; con usuario personal se anota solo). Si cierra la ventana, no se guarda (lo leído queda).
+  let reg;
+  try {
+    if (window.ADORNO_CARAS?.registrar) {
+      reg = await ADORNO_CARAS.registrar({ cli: sb, funcion: 'stock.rfid_leer', local: $('local').value || null, detalle: { lugar, etiquetas: etiquetas.size } });
+    } else {
+      const { data: c, error: e1 } = await sb.rpc('hub_registra_quien', { p_funcion: 'stock.rfid_leer' });
+      reg = e1 ? { ok: false, motivo: 'error', error: e1.message } : (c?.registra ? { ok: false, motivo: 'error', error: 'recargá la página y probá de nuevo' } : { ok: true });
+    }
+  } catch (e) { reg = { ok: false, motivo: 'error', error: e.message || String(e) }; }
+  if (!reg.ok) { btn.disabled = false; if (reg.motivo === 'error') toast('No pude anotar quién leyó: ' + reg.error); return; }
   const { data, error } = await sb.from('stock_rfid_lecturas').insert(fila).select('id').single();
   btn.disabled = false;
   if (error) { toast('No se pudo guardar: ' + error.message); return; }

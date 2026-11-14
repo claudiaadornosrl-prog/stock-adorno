@@ -99,6 +99,7 @@ async function invGenerar(local) {
   const ids = [...document.querySelectorAll('#view-inventario input[type=checkbox]:checked')].map(i => +i.value);
   if (!ids.length) { toast('Marcá al menos una persona.'); return; }
   const anio = +document.getElementById('inv-anio').value, cuatri = +document.getElementById('inv-cuatri').value;
+  if (!await registrarQuien('stock.inv_armar', { accion: 'generar hojas', local, anio, cuatri, personas: ids.length })) return;
   const { data, error } = await sb.rpc('stock_inv_generar', { p_local: local, p_anio: anio, p_cuatri: cuatri, p_empleados: ids });
   if (error) { toast(error.message); return; }
   toast(`✓ ${data.hojas} hojas armadas. Revisalas y publicá.`);
@@ -142,12 +143,15 @@ async function invAbrirCiclo(id) {
 }
 const invSumar = (iso, d) => { const x = new Date(iso + 'T12:00:00'); x.setDate(x.getDate() + d); return x.toISOString().slice(0, 10); };
 async function invReasignar(hoja, emp, semana) {
+  // si cierra la ventana de quién, se vuelve a pintar el ciclo para que el desplegable muestre lo guardado
+  if (!await registrarQuien('stock.inv_armar', { accion: 'mover hoja', hoja, empleado: emp, semana })) { invAbrirCiclo(INV.ciclo.id); return; }
   const { error } = await sb.rpc('stock_inv_reasignar', { p_hoja: hoja, p_empleado: emp, p_semana: semana });
   if (error) { toast(error.message); return; }
   toast('✓ Hoja movida'); invAbrirCiclo(INV.ciclo.id);
 }
 async function invPublicar(id) {
   if (!confirm('Publicar el cuatrimestre: a partir de ahora cada persona ve sus hojas y puede empezar a contar. ¿Confirmás?')) return;
+  if (!await registrarQuien('stock.inv_armar', { accion: 'publicar', ciclo: id, local: INV.ciclo?.local || null })) return;
   const { error } = await sb.rpc('stock_inv_publicar', { p_ciclo: id });
   if (error) { toast(error.message); return; }
   // aviso a cada persona con hojas
@@ -160,6 +164,7 @@ async function invPublicar(id) {
 }
 async function invBorrarCiclo(id) {
   if (!confirm('¿Borrar este borrador con todas sus hojas?')) return;
+  if (!await registrarQuien('stock.inv_armar', { accion: 'borrar borrador', ciclo: id, local: INV.ciclo?.local || null })) return;
   const { error } = await sb.rpc('stock_inv_borrar_ciclo', { p_ciclo: id });
   if (error) { toast(error.message); return; }
   toast('Borrado'); invInit();
@@ -269,6 +274,7 @@ async function invGuardarConteo(cerrar) {
     (inp.dataset.ronda === '2' ? r2 : r1).push(it);
   });
   if (!r1.length && !r2.length && !cerrar) { toast('No escribiste ninguna cantidad.'); return; }
+  if (!await registrarQuien('stock.inv_contar', { accion: cerrar ? 'terminar hoja' : 'guardar conteo', hoja: h.id, titulo: h.titulo, semana: h.semana, articulos: r1.length + r2.length })) return;
   let res = null;
   if (r1.length) { const { data, error } = await sb.rpc('stock_inv_contar', { p_hoja: h.id, p_items: r1, p_ronda: 1 }); if (error) { toast(error.message); return; } res = data; }
   if (r2.length) { const { data, error } = await sb.rpc('stock_inv_contar', { p_hoja: h.id, p_items: r2, p_ronda: 2 }); if (error) { toast(error.message); return; } res = data; }
@@ -287,7 +293,8 @@ async function invGuardarConteo(cerrar) {
 async function invAgregarSku() {
   const sku = document.getElementById('inv-extra-sku').value.trim(), cant = document.getElementById('inv-extra-cant').value;
   if (!sku || cant === '') { toast('Poné el SKU y la cantidad.'); return; }
-  const { data, error } = await sb.rpc('stock_inv_agregar_sku', { p_hoja: INV.hoja.hoja.id, p_sku: sku, p_cantidad: Number(cant) });
+  if (!await registrarQuien('stock.inv_contar', { accion: 'agregar artículo', hoja: INV.hoja.hoja.id, sku, cantidad: Number(cant) })) return;
+  const { data, error } = await sb.rpc('stock_inv_agregar_sku',{ p_hoja: INV.hoja.hoja.id, p_sku: sku, p_cantidad: Number(cant) });
   if (error) { toast(error.message); return; }
   toast('✓ Agregado ' + data.sku); invAbrirHoja(INV.hoja.hoja.id);
 }
@@ -346,6 +353,7 @@ async function invGuardarControl(cerrar) {
     if (it.recuento != null || it.decision) items.push(it);
   });
   if (cerrar && !confirm('Marcar la hoja como controlada. Después no se edita. ¿Cargaste (o vas a cargar) los ajustes en el Dragonfish con motivo INV?')) return;
+  if (!await registrarQuien('stock.inv_controlar', { accion: cerrar ? 'marcar controlada' : 'guardar control', hoja: h.id, titulo: h.titulo, articulos: items.length })) return;
   const { data, error } = await sb.rpc('stock_inv_controlar', { p_hoja: h.id, p_items: items, p_cerrar: cerrar, p_obs: document.getElementById('inv-obs')?.value || null });
   if (error) { toast(error.message); return; }
   toast(cerrar ? '✓ Hoja controlada' : '✓ Guardado');

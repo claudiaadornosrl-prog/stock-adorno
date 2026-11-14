@@ -495,6 +495,7 @@ window.ADORNO_SSO = (function () {
 <meta name="theme-color" content="#4F6B68">
 <link rel="stylesheet" href="/hub/banner.css?v=4"><!-- banner común de los módulos (infra, 11-nov-2026) -->
 <script src="/hub/version.js" defer></script><!-- versión en el título, cambio de módulo y traba de equipo -->
+<script src="/hub/caras.js?v=4" defer></script><!-- (14-nov-2026) "📷 Registra quién" por función (Hub → Permisos) -->
 <!-- ⚠ este index.html lo tocan varias charlas (Stock, RFID/Inventario): volver a leerlo antes de editar -->
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.min.js" integrity="sha384-UagCvVPT5XXA0Hx+nJYUAGBFseHT9zBgpJMSebsAxl9lciTwbT+39j5VfRjdP5Tp" crossorigin="anonymous"></script>
@@ -1330,6 +1331,7 @@ async function ignorarSugerencia(i) {
   const g = sugCache[i];
   if (!g) return;
   if (!confirm(`¿Descartar "${g.modelo_sugerido}"?\n\nNo va a aparecer más en la lista de sugerencias.\n(Se sigue viendo normal en el buscador 🔍)`)) return;
+  if (!await registrarQuien('stock.listas_editar', { accion: 'descartar sugerencia', modelo: g.modelo_sugerido, categoria: g.categoria })) return;
   const card = document.getElementById('sug-card-' + i);
   let quien = '';
   try { quien = (await sb.auth.getUser()).data?.user?.email || ''; } catch (_) {}
@@ -1354,6 +1356,7 @@ async function crearDesdeSugerencia(i) {
   const g = sugCache[i];
   if (!g) return;
   const card = document.getElementById('sug-card-' + i);
+  if (!await registrarQuien('stock.listas_editar', { accion: 'crear desde sugerencia', modelo: g.modelo_sugerido, categoria: g.categoria })) return;
   try {
     const { error } = await sb.from('espalma_modelos').insert({
       categoria: g.categoria,
@@ -1414,6 +1417,8 @@ function initDragListas() {
       const ids = [...dragTbody.querySelectorAll('tr')]
         .map(tr => parseInt(tr.dataset.id)).filter(Boolean);
       if (!ids.length) return;
+      // si no se anotó quién (cerró la ventana), la lista vuelve al orden guardado
+      if (!await registrarQuien('stock.listas_ordenar', { lista: listaCat, local: miLocalStock })) { renderEspalma(); return; }
       try {
         const { error } = await sb.rpc('espalma_reordenar_local', { p_local: miLocalStock, p_ids: ids });
         if (error) throw error;
@@ -1525,6 +1530,7 @@ async function guardarEspalma() {
     numero_local: document.getElementById('esp-numero').value.trim() || null,
     updated_at: new Date().toISOString(),
   };
+  if (!await registrarQuien('stock.listas_editar', { accion: espEditId ? 'editar modelo' : 'agregar modelo', modelo, id: espEditId || null })) return;
   try {
     if (espEditId) {
       const { error } = await sb.from('espalma_modelos').update(fila).eq('id', espEditId);
@@ -1542,6 +1548,8 @@ async function guardarEspalma() {
 async function borrarEspalma() {
   if (!espEditId) return;
   if (!confirm('¿Eliminar este modelo?')) return;
+  const mod = espCache.find(x => x.id === espEditId);
+  if (!await registrarQuien('stock.listas_editar', { accion: 'eliminar modelo', modelo: mod?.modelo || null, id: espEditId })) return;
   try {
     const { error } = await sb.from('espalma_modelos').delete().eq('id', espEditId);
     if (error) throw error;
@@ -1567,6 +1575,60 @@ function toast(msg) {
   t.classList.add('show');
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => t.classList.remove('show'), 3500);
+}
+
+// (14-nov-2026, JP vía Infraestructura) "📷 Registra quién": si JP marcó la función en el Hub (Permisos → Perfiles),
+// antes de grabar se pide quién lo está haciendo (la cara, o tocar su nombre en la lista; con usuario personal se anota
+// solo) y queda en Hub → Permisos → Registro. Si no está marcada, sigue normal. Devuelve el registro, o null si NO hay
+// que hacer la operación (la persona cerró la ventana o no se pudo anotar). El local que se anota es el de la compu.
+let _registrando = false;   // doble toque mientras se pregunta quién → el segundo no hace nada
+async function registrarQuien(funcion, detalle) {
+  if (_registrando) return null;
+  _registrando = true;
+  let r;
+  try {
+    if (window.ADORNO_CARAS?.registrar) {
+      r = await ADORNO_CARAS.registrar({ cli: sb, funcion, local: miLocalStock || null, detalle: detalle || null });
+    } else {
+      // caras.js no llegó a cargar: si la función no registra, se sigue; si registra, hace falta la ventana
+      const { data, error } = await sb.rpc('hub_registra_quien', { p_funcion: funcion });
+      if (error) r = { ok: false, motivo: 'error', error: error.message };
+      else if (!data?.registra) r = { ok: true, omitido: true };
+      else r = { ok: false, motivo: 'error', error: 'recargá la página y probá de nuevo' };
+    }
+  } catch (e) { r = { ok: false, motivo: 'error', error: e.message || String(e) }; }
+  finally { _registrando = false; }
+  if (!r?.ok) {
+    if (r?.motivo === 'error') toast('No pude anotar quién lo hace: ' + (r.error || 'error'));
+    return null;
+  }
+  return r;
+}
+// Nombre de quien tocó su nombre o fue reconocida (cuenta compartida); '' si no hizo falta preguntar
+// (mismo formato que nombrePropio: primer nombre + apellido)
+function nombreRegistrado(r) {
+  if (!r || r.omitido || r.modo === 'usuario' || !r.nombre) return '';
+  const t = String(r.nombre).trim();
+  const tit = s => s.toLowerCase().replace(/(^|\s)\S/g, c => c.toUpperCase());
+  if (!t.includes(',')) return tit(t);
+  const [ape, nom] = t.split(',');
+  return tit(((nom || '').trim().split(/\s+/)[0] + ' ' + ape.trim()).trim());
+}
+// Si la persona ya se identificó hace un momento en la misma ventana (p. ej. "Lo busco" y después "Lo tengo"), se anota
+// a esa misma persona sin volver a preguntarle.
+async function registrarQuienYa(funcion, previo, detalle) {
+  if (!previo || previo.omitido || !previo.empleado_id) return registrarQuien(funcion, detalle);
+  if (_registrando) return null;
+  _registrando = true;
+  try {
+    const { data: c, error: e1 } = await sb.rpc('hub_registra_quien', { p_funcion: funcion });
+    if (e1) throw e1;
+    if (!c?.registra) return { ok: true, omitido: true };
+    const { data, error } = await sb.rpc('hub_registrar', { p_funcion: funcion, p_local: miLocalStock || null, p_empleado_id: previo.empleado_id, p_detalle: detalle || null });
+    if (error) throw error;
+    return { ok: true, ...data };
+  } catch (e) { toast('No pude anotar quién lo hace: ' + (e.message || e)); return null; }
+  finally { _registrando = false; }
 }
 
 let debounceTimer = null;
@@ -2043,11 +2105,14 @@ async function enviarTraslado() {
   if (!trasladoActual) return;
   const { sku, local, desc, sugerenciaId } = trasladoActual;
   const cant = parseInt(document.getElementById('tras-cant').value) || 1;
+  // (14-nov) si cierra la ventana de quién lo pide, el pedido queda abierto para mandarlo después
+  const reg = await registrarQuien('stock.traslados', { accion: 'pedir', sku, cantidad: cant, a: local, sugerencia: sugerenciaId || null });
+  if (!reg) return;
   cerrarTraslado();
   let quien = '', empId = null;
   try { quien = (await sb.auth.getUser()).data?.user?.email || ''; } catch (_) {}
   try { empId = (await sb.rpc('rrhh_current_user')).data?.empleado_id ?? null; } catch (_) {}
-  const nombre = await nombrePropio();
+  const nombre = nombreRegistrado(reg) || await nombrePropio();
   try {
     const { data: fila, error } = await sb.from('stock_traslados').insert({
       sku, descripcion: desc, cantidad: cant, local_origen: local,
@@ -2227,6 +2292,7 @@ async function redisNoTrabaja(id) {
     + `¿En ${local} no trabajan este producto?\nNo se va a volver a sugerir para ${local} en los próximos listados `
     + `(se puede deshacer abajo, en "Productos que no trabajamos").\n\nMotivo (opcional):`, '');
   if (motivo === null) return;
+  if (!await registrarQuien('stock.no_trabajamos', { accion: 'no lo trabajamos', sku: s.sku, local: s.local_destino, motivo: motivo || null })) return;
   try {
     const { error } = await sb.rpc('stock_marcar_no_trabaja', { p_sku: s.sku, p_local: s.local_destino, p_motivo: motivo || null });
     if (error) throw error;
@@ -2236,6 +2302,8 @@ async function redisNoTrabaja(id) {
 }
 
 async function redisAhoraNo(id) {
+  const s = _redisCache.find(x => x.id === id);
+  if (!await registrarQuien('stock.redistribucion', { accion: 'ahora no', sugerencia: id, sku: s?.sku || null, de: s?.local_origen || null, a: s?.local_destino || null })) return;
   try {
     const { error } = await sb.rpc('stock_descartar_sugerencia', { p_id: id });
     if (error) throw error;
@@ -2249,6 +2317,7 @@ async function redisVolverASugerir(i) {
   if (!x) return;
   const sku = x.sku, local = x.local;
   if (!confirm(`¿${LOCAL_LABEL[local] || local} vuelve a trabajar ${sku}?\nSe va a poder sugerir de nuevo desde el lunes que viene.`)) return;
+  if (!await registrarQuien('stock.no_trabajamos', { accion: 'vuelve a trabajarlo', sku, local })) return;
   try {
     const { error } = await sb.rpc('stock_quitar_no_trabaja', { p_sku: sku, p_local: local });
     if (error) throw error;
@@ -2359,10 +2428,12 @@ async function anularTraslado(id) {
     : '';
   if (!confirm(`¿Anular el pedido de ${x.cantidad} × ${x.sku}?${aviso}`)) return;
   const motivo = prompt('¿Por qué se anula? (opcional — le llega al otro local)') || '';
+  const reg = await registrarQuien('stock.traslados', { accion: 'anular', traslado: id, sku: x.sku, cantidad: x.cantidad, a: x.local_origen, motivo: motivo || null });
+  if (!reg) return;
   try {
     const { data, error } = await sb.rpc('stock_anular_traslado', { p_id: id, p_motivo: motivo });
     if (error) throw error;
-    const quien = await nombrePropio();
+    const quien = nombreRegistrado(reg) || await nombrePropio();
     await sb.functions.invoke('enviar-push', {
       body: {
         local_todos: data.local_origen,
@@ -2389,10 +2460,12 @@ async function pedirCancelacionTraslado(id) {
   if (!x) return;
   const motivo = prompt(`${LOCAL_LABEL[x.local_origen] || x.local_origen} ya apartó ${x.cantidad} × ${x.sku}${x.respondido_por ? ' (' + x.respondido_por + ')' : ''}.\n\n¿Por qué se cancela? (obligatorio — le llega a quien lo apartó)`, 'El cliente no lo quiso');
   if (motivo === null) return;
+  const reg = await registrarQuien('stock.traslados', { accion: 'pedir cancelación', traslado: id, sku: x.sku, cantidad: x.cantidad, a: x.local_origen, motivo });
+  if (!reg) return;
   try {
     const { data, error } = await sb.rpc('stock_traslado_pedir_cancelacion', { p_id: id, p_motivo: motivo });
     if (error) throw error;
-    const quien = await nombrePropio();
+    const quien = nombreRegistrado(reg) || await nombrePropio();
     await sb.functions.invoke('enviar-push', {
       body: {
         local_todos: data.local_origen,
@@ -2415,10 +2488,12 @@ async function confirmarCancelacionTraslado(id) {
   const x = _trasHist.find(y => y.id === id);
   if (!x) return;
   if (!confirm(`¿Ya volviste a la venta ${x.cantidad} × ${x.sku}?${x.cancel_motivo ? '\n\nMotivo de la cancelación: ' + x.cancel_motivo : ''}`)) return;
+  const reg = await registrarQuien('stock.traslados', { accion: 'confirmar cancelación (liberado)', traslado: id, sku: x.sku, cantidad: x.cantidad, pidio: x.local_solicitante });
+  if (!reg) return;
   try {
     const { data, error } = await sb.rpc('stock_traslado_confirmar_cancelacion', { p_id: id });
     if (error) throw error;
-    const quien = await nombrePropio();
+    const quien = nombreRegistrado(reg) || await nombrePropio();
     const body = {
       app: 'stock',
       title: '✔ Traslado cancelado — mercadería liberada',
@@ -2482,7 +2557,10 @@ function destinoSolicitante(t) {
 async function marcarRevisando() {
   if (!trasladoResp) return;
   const t = trasladoResp;
-  const quien = await nombrePropio();
+  const reg = await registrarQuien('stock.traslados', { accion: 'lo busco', traslado: t.id, sku: t.sku, cantidad: t.cantidad, pidio: t.local_solicitante });
+  if (!reg) return;
+  t._reg = reg;   // al responder después en la misma ventana, se anota a la misma persona sin volver a preguntar
+  const quien = nombreRegistrado(reg) || await nombrePropio();
   try {
     const { data: filas, error } = await sb.from('stock_traslados')
       .update({ estado: 'revisando', revisando_por: quien, revisando_at: new Date().toISOString() })
@@ -2516,9 +2594,11 @@ async function marcarRevisando() {
 async function responderTraslado(tiene) {
   if (!trasladoResp) return;
   const t = trasladoResp;
+  const reg = await registrarQuienYa('stock.traslados', t._reg, { accion: tiene ? 'lo tengo (apartado)' : 'no está', traslado: t.id, sku: t.sku, cantidad: t.cantidad, pidio: t.local_solicitante });
+  if (!reg) return;   // la ventana del pedido queda abierta
   document.getElementById('trasresp-modal-bg').style.display = 'none';
   trasladoResp = null;
-  const quien = await nombrePropio();
+  const quien = nombreRegistrado(reg.omitido ? t._reg : reg) || await nombrePropio();
   const estado = tiene ? 'apartado' : 'sin_stock';
   try {
     const { data: filas, error } = await sb.from('stock_traslados')
@@ -2592,6 +2672,7 @@ const escAttr = s => String(s).replace(/'/g, "\\'").replace(/"/g, '&quot;');
 // VERIFICACIÓN EN VIVO (jobs stock_sku → daemons de cada local)
 // ═══════════════════════════════════════════════════════════════════
 async function verificarEnVivo(sku) {
+  if (!await registrarQuien('stock.stock_ahora', { sku })) return;
   const btn = document.getElementById('live-' + cssId(sku));
   if (btn) { btn.disabled = true; btn.textContent = '⏳'; }
 
@@ -2716,8 +2797,8 @@ mostrarVacio();
   }, true);
 })();
 </script>
-<script src="manual.js?v=11"></script>
-<script src="inventario.js?v=2"></script>
+<script src="manual.js?v=12"></script>
+<script src="inventario.js?v=3"></script>
 <script>
 // (24-ago) Blindaje iOS: re-suscripcion automatica de push (ver regla en
 // las otras apps). Solo si el permiso esta concedido y esta usuaria ya
