@@ -69,7 +69,7 @@ async function clientePara(f, local) {
   if (verComo() && p !== 'a') { avisoVerComo(f, local, p); return null; }
   if (p === 'h') return sb;
   if (p !== 'a') {
-    toast('Tu perfil no tiene habilitado: ' + (FUNC_STOCK[f] || f) + (local ? ' (' + (PERM_LOCAL[local] || local) + ')' : '') + '. Pedíselo a administración (Hub → Permisos).');
+    (typeof avisoError === 'function' ? avisoError : toast)('Tu perfil no tiene habilitado: ' + (FUNC_STOCK[f] || f) + (local ? ' (' + (PERM_LOCAL[local] || local) + ')' : '') + '. Pedíselo a administración (Hub → Permisos).');
     return null;
   }
   return pedirSuperior(f, local);

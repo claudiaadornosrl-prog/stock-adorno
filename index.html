@@ -757,7 +757,7 @@ tr.drag-over { border-top: 3px solid var(--primary); }
     <button class="hbtn ab-fijo" onclick="doLogout()" title="Salir" aria-label="Salir"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg><span class="lb">Salir</span></button>
   </div>
 </header>
-<script src="/hub/banner.js?v=7"></script><!-- (16-nov) v7: «Ver como» de JP, solo lectura -->
+<script src="/hub/banner.js?v=8"></script><!-- (16-nov) v7: «Ver como» de JP, solo lectura · v8: carteles de error con ✕ -->
 
 <div id="view-redis" style="display:none;padding:12px;max-width:760px;margin:0 auto;"></div>
 <div id="view-traslados" style="display:none;padding:12px;max-width:760px;margin:0 auto;"></div>
@@ -894,7 +894,7 @@ tr.drag-over { border-top: 3px solid var(--primary); }
 
 <div id="toast"></div>
 
-<script src="permisos.js?v=2"></script><!-- (14-nov-2026) permisos por función desde el Hub -->
+<script src="permisos.js?v=3"></script><!-- (14-nov-2026) permisos por función desde el Hub -->
 <script>
 // ═══════════════════════════════════════════════════════════════════
 // CONFIG
@@ -990,7 +990,7 @@ async function doLogin() {
     }
     mostrarApp();
   } catch (e) {
-    errEl.textContent = e.message;
+    errEl.textContent = errTxt(e);
   } finally {
     btn.disabled = false; btn.textContent = 'Entrar →';
   }
@@ -1223,7 +1223,7 @@ async function cargarEspalma() {
     actualizarPreciosEspalma();
     chequearSugerencias();
   } catch (e) {
-    cont.innerHTML = `<div class="empty">⚠️ Error: ${escHtml(e.message)}</div>`;
+    cont.innerHTML = `<div class="empty">⚠️ ${escHtml(errTxt(e))}</div>`;
   }
 }
 
@@ -1548,7 +1548,7 @@ async function mostrarStockPorColor(titulo, patron) {
     </table></div>
     <div style="font-size:11px;color:var(--muted);margin-top:8px;">${items.length} colores con stock · tocá el nombre para ver el SKU</div>`;
   } catch (e) {
-    cont.innerHTML = `<div class="empty">⚠️ ${escHtml(e.message)}</div>`;
+    cont.innerHTML = `<div class="empty">⚠️ ${escHtml(errTxt(e))}</div>`;
   }
 }
 function cerrarEspalmaStock() {
@@ -1608,7 +1608,7 @@ async function guardarEspalma() {
     cerrarEspalmaModal();
     toast('✓ Guardado');
     cargarEspalma();
-  } catch (e) { errEl.textContent = e.message; }
+  } catch (e) { errEl.textContent = errTxt(e); }
 }
 
 async function borrarEspalma() {
@@ -1623,7 +1623,7 @@ async function borrarEspalma() {
     cerrarEspalmaModal();
     toast('🗑 Eliminado');
     cargarEspalma();
-  } catch (e) { document.getElementById('esp-error').textContent = e.message; }
+  } catch (e) { document.getElementById('esp-error').textContent = errTxt(e); }
 }
 
 function toggleKebab(ev) {
@@ -1642,6 +1642,18 @@ function toast(msg) {
   t.classList.add('show');
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => t.classList.remove('show'), 3500);
+}
+
+// (16-nov-2026, JP vía Infra: «los carteles rojos de avisos de sistema, que no se cierren automáticamente, que tengan una X
+// … y que se entiendan los errores») /hub/banner.js trae ADORNO_AVISO: error() = cartel rojo fijo con ✕ (el original queda
+// en «Ver detalle técnico»); traducir() = el error en castellano simple. Si banner.js no cargó, sale como antes.
+function errTxt(e) {
+  const m = String((e && e.message) || e || '');
+  try { return window.ADORNO_AVISO ? ADORNO_AVISO.traducir(m).texto : m; } catch (_) { return m; }
+}
+function avisoError(e) {
+  try { if (window.ADORNO_AVISO) { ADORNO_AVISO.error((e && e.message) || e); return; } } catch (_) {}
+  toast(String((e && e.message) || e || 'Algo falló'));
 }
 
 // (14-nov-2026, JP vía Infraestructura) "📷 Registra quién": si JP marcó la función en el Hub (Permisos → Perfiles),
@@ -1745,7 +1757,7 @@ async function buscar() {
     if ((data || []).length) guardarReciente(q);
     render(ultimoResultado.articulos, q);
   } catch (e) {
-    cont.innerHTML = `<div class="empty">⚠️ Error: ${escHtml(e.message)}</div>`;
+    cont.innerHTML = `<div class="empty">⚠️ ${escHtml(errTxt(e))}</div>`;
   }
 }
 
@@ -1947,7 +1959,7 @@ async function actualizarBtnNotifs() {
 
 async function toggleNotifs() {
   if (window.ADORNO_VERCOMO) { toast('👁 En «Ver como» no se tocan las notificaciones.'); return; }
-  if (!notifsSoportadas()) { toast('Este dispositivo no soporta notificaciones.'); return; }
+  if (!notifsSoportadas()) { avisoError('Este dispositivo no soporta notificaciones.'); return; }
   const reg = await navigator.serviceWorker.ready;
   const actual = await _getSubFresca(reg);
 
@@ -1963,7 +1975,7 @@ async function toggleNotifs() {
   try {
     const perm = await Notification.requestPermission();
     if (perm !== 'granted') {
-      toast('Permiso denegado. En iPhone hay que instalar la app en la pantalla de inicio primero.');
+      avisoError('El navegador no dio permiso para las notificaciones. En iPhone hay que instalar la app en la pantalla de inicio primero.');
       return;
     }
     const sub = await reg.pushManager.subscribe({
@@ -2122,9 +2134,9 @@ async function abrirScanner() {
     cerrarScanner();
     if (cancelado) return;
     if (e && (e.name === 'NotAllowedError' || e.name === 'SecurityError')) {
-      toast('Permiso de cámara denegado. En iPhone: Ajustes → Safari → Cámara → Permitir. Si usás la app instalada, borrala y volvé a instalarla para que pida permiso.');
+      avisoError('El navegador no dio permiso para la cámara. En iPhone: Ajustes → Safari → Cámara → Permitir. Si usás la app instalada, borrala y volvé a instalarla para que pida permiso.');
     } else if (e && e.name === 'NotFoundError') {
-      toast('No encontré cámara en este dispositivo.');
+      avisoError('No encontré cámara en este dispositivo.');
     } else {
       toast('No pude acceder a la cámara: ' + (e.message || e));
     }
@@ -2283,7 +2295,7 @@ async function cargarRedistribucion() {
     _noTrabaja = nt.data || [];
     renderRedistribucion();
   } catch (e) {
-    cont.innerHTML = `<div class="empty">Error: ${escHtml(e.message || e)}</div>`;
+    cont.innerHTML = `<div class="empty">⚠️ ${escHtml(errTxt(e))}</div>`;
   }
 }
 
@@ -2437,7 +2449,7 @@ async function cargarHistorialTraslados() {
     _trasHist = data || [];
     renderHistorialTraslados();
   } catch (e) {
-    cont.innerHTML = `<div class="empty">Error: ${escHtml(e.message || e)}</div>`;
+    cont.innerHTML = `<div class="empty">⚠️ ${escHtml(errTxt(e))}</div>`;
   }
 }
 
@@ -2626,7 +2638,7 @@ async function chequearTrasladoURL() {
     }
     abrirModalRespuesta(t, await nombrePropio());
   } catch (e) {
-    toast('' + (e.message || e));
+    avisoError(e);
   }
 }
 
@@ -2692,7 +2704,7 @@ async function responderTraslado(tiene) {
     if (error) throw error;
     // (13-nov) si no cambió ninguna fila: ya lo respondió otra o no es de tu local (política st_update) → no avisar en falso
     if (!filas || !filas.length) {
-      toast('No se guardó: ya lo respondieron, o el pedido no es de tu local.');
+      avisoError('No se guardó: ya lo respondieron, o el pedido no es de tu local.');
       if (document.getElementById('view-traslados').style.display !== 'none') cargarHistorialTraslados();
       return;
     }
@@ -2884,8 +2896,8 @@ mostrarVacio();
   }, true);
 })();
 </script>
-<script src="manual.js?v=14"></script>
-<script src="inventario.js?v=4"></script>
+<script src="manual.js?v=15"></script>
+<script src="inventario.js?v=5"></script>
 <script>
 // (24-ago) Blindaje iOS: re-suscripcion automatica de push (ver regla en
 // las otras apps). Solo si el permiso esta concedido y esta usuaria ya

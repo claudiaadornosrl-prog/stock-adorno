@@ -106,7 +106,7 @@ async function invGenerar(local) {
   const reg = await registrarQuien('stock.inv_armar', { accion: 'generar hojas', local, anio, cuatri, personas: ids.length }, local);
   if (!reg) return;
   const { data, error } = await reg.db.rpc('stock_inv_generar', { p_local: local, p_anio: anio, p_cuatri: cuatri, p_empleados: ids });
-  if (error) { toast(error.message); return; }
+  if (error) { avisoError(error); return; }
   toast(`✓ ${data.hojas} hojas armadas. Revisalas y publicá.`);
   await invInit(); invAbrirCiclo(data.ciclo_id);
 }
@@ -117,7 +117,7 @@ async function invAbrirCiclo(id) {
   if (!ciclo) return;
   INV.ciclo = ciclo;
   const [{ data: hojas, error }, { data: emps }] = await Promise.all([sb.rpc('stock_inv_hojas', { p_ciclo: id }), sb.rpc('stock_inv_empleados', { p_local: ciclo.local })]);
-  if (error) { toast(error.message); return; }
+  if (error) { avisoError(error); return; }
   INV.hojas = hojas || []; INV.emps = emps || [];
   const c = document.getElementById('view-inventario');
   const sem = {}; INV.hojas.forEach(h => (sem[h.semana] ||= []).push(h));
@@ -152,7 +152,7 @@ async function invReasignar(hoja, emp, semana) {
   const reg = await registrarQuien('stock.inv_armar', { accion: 'mover hoja', hoja, empleado: emp, semana }, INV.ciclo?.local);
   if (!reg) { invAbrirCiclo(INV.ciclo.id); return; }
   const { error } = await reg.db.rpc('stock_inv_reasignar', { p_hoja: hoja, p_empleado: emp, p_semana: semana });
-  if (error) { toast(error.message); return; }
+  if (error) { avisoError(error); return; }
   toast('✓ Hoja movida'); invAbrirCiclo(INV.ciclo.id);
 }
 async function invPublicar(id) {
@@ -160,7 +160,7 @@ async function invPublicar(id) {
   const reg = await registrarQuien('stock.inv_armar', { accion: 'publicar', ciclo: id, local: INV.ciclo?.local || null }, INV.ciclo?.local);
   if (!reg) return;
   const { error } = await reg.db.rpc('stock_inv_publicar', { p_ciclo: id });
-  if (error) { toast(error.message); return; }
+  if (error) { avisoError(error); return; }
   // aviso a cada persona con hojas
   const porEmp = {}; INV.hojas.forEach(h => { if (h.empleado_id) porEmp[h.empleado_id] = (porEmp[h.empleado_id] || 0) + 1; });
   for (const [emp, n] of Object.entries(porEmp)) {
@@ -174,14 +174,14 @@ async function invBorrarCiclo(id) {
   const reg = await registrarQuien('stock.inv_armar', { accion: 'borrar borrador', ciclo: id, local: INV.ciclo?.local || null }, INV.ciclo?.local);
   if (!reg) return;
   const { error } = await reg.db.rpc('stock_inv_borrar_ciclo', { p_ciclo: id });
-  if (error) { toast(error.message); return; }
+  if (error) { avisoError(error); return; }
   toast('Borrado'); invInit();
 }
 
 // ── La hoja ──────────────────────────────────────────────────────────
 async function invAbrirHoja(id) {
   const { data, error } = await sb.rpc('stock_inv_hoja', { p_hoja: id });
-  if (error) { toast(error.message); return; }
+  if (error) { avisoError(error); return; }
   INV.hoja = data;
   const h = data.hoja;
   if (data.gestiona && (h.estado === 'contada' || h.estado === 'controlada')) invRenderControl();
@@ -285,11 +285,11 @@ async function invGuardarConteo(cerrar) {
   const reg = await registrarQuien('stock.inv_contar', { accion: cerrar ? 'terminar hoja' : 'guardar conteo', hoja: h.id, titulo: h.titulo, semana: h.semana, articulos: r1.length + r2.length }, h.local);
   if (!reg) return;
   let res = null;
-  if (r1.length) { const { data, error } = await reg.db.rpc('stock_inv_contar', { p_hoja: h.id, p_items: r1, p_ronda: 1 }); if (error) { toast(error.message); return; } res = data; }
-  if (r2.length) { const { data, error } = await reg.db.rpc('stock_inv_contar', { p_hoja: h.id, p_items: r2, p_ronda: 2 }); if (error) { toast(error.message); return; } res = data; }
+  if (r1.length) { const { data, error } = await reg.db.rpc('stock_inv_contar', { p_hoja: h.id, p_items: r1, p_ronda: 1 }); if (error) { avisoError(error); return; } res = data; }
+  if (r2.length) { const { data, error } = await reg.db.rpc('stock_inv_contar', { p_hoja: h.id, p_items: r2, p_ronda: 2 }); if (error) { avisoError(error); return; } res = data; }
   if (cerrar) {
     const { data, error } = await reg.db.rpc('stock_inv_cerrar', { p_hoja: h.id });
-    if (error) { toast(error.message); await invAbrirHoja(h.id); return; }
+    if (error) { avisoError(error); await invAbrirHoja(h.id); return; }
     try { await sb.functions.invoke('enviar-push', { body: { local: h.local, app: 'stock', title: '📋 Hoja de inventario terminada',
       body: `${h.empleado_nombre || 'Una vendedora'} terminó "${h.titulo.slice(0, 50)}" (semana ${h.semana})${data.con_diferencia ? ` · ${data.con_diferencia} artículo(s) con diferencia` : ' · sin diferencias'}. Entrá a Stock › Inventario para controlarla.`,
       tag: 'inv-hoja-' + h.id, url: './?vista=inventario' } }); } catch (_) {}
@@ -305,7 +305,7 @@ async function invAgregarSku() {
   const reg = await registrarQuien('stock.inv_contar', { accion: 'agregar artículo', hoja: INV.hoja.hoja.id, sku, cantidad: Number(cant) }, INV.hoja.hoja.local);
   if (!reg) return;
   const { data, error } = await reg.db.rpc('stock_inv_agregar_sku',{ p_hoja: INV.hoja.hoja.id, p_sku: sku, p_cantidad: Number(cant) });
-  if (error) { toast(error.message); return; }
+  if (error) { avisoError(error); return; }
   toast('✓ Agregado ' + data.sku); invAbrirHoja(INV.hoja.hoja.id);
 }
 
@@ -366,7 +366,7 @@ async function invGuardarControl(cerrar) {
   const reg = await registrarQuien('stock.inv_controlar', { accion: cerrar ? 'marcar controlada' : 'guardar control', hoja: h.id, titulo: h.titulo, articulos: items.length }, h.local);
   if (!reg) return;
   const { data, error } = await reg.db.rpc('stock_inv_controlar', { p_hoja: h.id, p_items: items, p_cerrar: cerrar, p_obs: document.getElementById('inv-obs')?.value || null });
-  if (error) { toast(error.message); return; }
+  if (error) { avisoError(error); return; }
   toast(cerrar ? '✓ Hoja controlada' : '✓ Guardado');
   await invAbrirHoja(h.id);
 }
