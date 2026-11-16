@@ -52,10 +52,21 @@ function permisoEn(f, local) {
   return o === 'o' ? 'o' : (o === 'a' || p === 'a') ? 'a' : 'h';
 }
 const veoEn = (f, local) => permisoEn(f, local) !== 'o';
+// (16-nov-2026, pedido de Infra) «Ver como»: JP mira el módulo con los permisos de otra cuenta, en solo lectura
+// (/hub/banner.js deja window.ADORNO_VERCOMO). No se graba nada ni se abre la cámara: lo habilitado o apagado avisa qué le
+// pasaría a esa persona; lo que «pide permiso» (para hacer o para mirar) abre la misma ventana «Pedir autorización» que le
+// aparece a ella, pero no autoriza nada (JP: «ver que la parte de pedir permiso esté funcionando bien»).
+const verComo = () => !!window.ADORNO_VERCOMO;
+function avisoVerComo(f, local, p) {
+  const que = (FUNC_STOCK[f] || f) + (local ? ' (' + (PERM_LOCAL[local] || local) + ')' : '');
+  const quien = (window.ADORNO_VERCOMO && ADORNO_VERCOMO.nombre) || 'Esta cuenta';
+  toast('👁 ' + quien + (p === 'h' ? ' puede: ' : p === 'a' ? ' tendría que pedir autorización para: ' : ' no tiene habilitado: ') + que + '. En «Ver como» no se graba nada.');
+}
 
 // Cliente con el que hacer la operación: sb si está habilitada, el de quien autorizó si pide permiso, null si no se puede
 async function clientePara(f, local) {
   const p = permisoEn(f, local);
+  if (verComo() && p !== 'a') { avisoVerComo(f, local, p); return null; }
   if (p === 'h') return sb;
   if (p !== 'a') {
     toast('Tu perfil no tiene habilitado: ' + (FUNC_STOCK[f] || f) + (local ? ' (' + (PERM_LOCAL[local] || local) + ')' : '') + '. Pedíselo a administración (Hub → Permisos).');
@@ -112,12 +123,18 @@ function pedirSuperior(f, local) {
       <div class="sup-pie"><button type="button" id="sup-no">Cancelar</button><button type="button" class="pri" id="sup-si">Autorizar</button></div></div>`;
     document.body.appendChild(d);
     const q = id => d.querySelector('#' + id), err = q('sup-err'), si = q('sup-si');
+    const vc = verComo();   // «Ver como»: la misma ventana que le aparece a esa cuenta, sin escribir ni mandar nada
+    if (vc) {
+      d.querySelector('.sup-txt').insertAdjacentHTML('afterend', '<div class="sup-txt" style="color:#8a5a14"><b>👁 Modo «Ver como»</b>: así le aparece el pedido de permiso a esta cuenta. Es solo para mirar: no se autoriza nada.</div>');
+      q('sup-mail').disabled = true; q('sup-clave').disabled = true;
+    }
     const fin = v => { d.remove(); listo(v); };
     q('sup-no').onclick = () => fin(null);
     q('sup-clave').addEventListener('keydown', e => { if (e.key === 'Enter') si.click(); });
     d.addEventListener('keydown', e => { if (e.key === 'Escape') { e.stopPropagation(); fin(null); } });
     setTimeout(() => q('sup-mail').focus(), 50);
     si.onclick = async () => {
+      if (vc) { toast('Modo «Ver como»: acá autorizaría con su usuario y clave. No se autoriza nada.'); return; }
       const em = (q('sup-mail').value || '').trim().toLowerCase(), pw = q('sup-clave').value || '';
       err.textContent = '';
       if (!em || !pw) { err.textContent = 'Completá el mail y la clave.'; return; }
