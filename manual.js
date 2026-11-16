@@ -43,6 +43,7 @@ function _manualSecciones() {
         'En Stock pueden pedirlo: pedir, anular o cancelar un traslado y responderlo ("Lo busco", "Lo tengo", "No está"); "Ahora no" y "No lo trabajamos" / "Volver a sugerir" de Redistribución; agregar, editar, borrar u ordenar modelos de las Listas; el ⚡ stock al momento; armar, publicar o borrar el inventario y mover hojas; guardar o terminar una hoja de conteo y agregar un artículo; el control de la encargada; y guardar una pasada del lector RFID.',
         'Con la cuenta del local o de la oficina aparecen en pastillas los nombres de la gente del local: tocá el tuyo. Si venís de otro local, "Ver todos los locales".',
         'Si cerrás esa ventana, la operación no se hace (no se pierde lo que escribiste: el pedido, la hoja o lo leído siguen ahí).',
+        '📷 En las compus que tienen el fichador por cámara, cuando hace falta la cámara (ver quién lo hace, autorizar o el lector de códigos) el sistema le pide al fichador que la suelte un momento y después le avisa que siga. Mientras tanto no se puede fichar en esa compu, así que conviene terminar y cerrar la ventana.',
         'Al pedir un traslado y al "Lo busco", "Lo tengo" o "No está" desde la cuenta compartida, el nombre que tocaste es el que le aparece al otro local. Si primero tocaste "Lo busco", al responder no te lo vuelve a preguntar.',
         'Lo anotado lo ve JP en Hub → Permisos → Registro: quién, cuándo, con qué cuenta y qué hizo. La foto nunca se guarda.',
       ],
@@ -77,6 +78,7 @@ function _manualSecciones() {
       pasos: [
         'Tocá el ícono de la cámara al lado del buscador.',
         'Apuntá al código de barras — funciona en Android y iPhone.',
+        'La cámara se cierra sola si salís de la pantalla o si pasan 2 minutos sin leer ningún código: en las compus con fichador por cámara, mientras el lector está abierto no se puede fichar. Para seguir, tocá de nuevo el ícono.',
         'Si el producto no tiene foto, podés tocar "📷 Pedir foto" y le llega el aviso a Oficina (salvo discontinuados).',
       ],
     },
