@@ -1,5 +1,5 @@
 // Service Worker — Stock Adorno
-const CACHE_VERSION = 'stock-adorno-v96-camara-fichador';
+const CACHE_VERSION = 'stock-adorno-v97-clodi-iphone';
 const CACHE_ASSETS = ['./', './index.html',
   './manual.js', './inventario.js', './permisos.js', './manifest.webmanifest', './favicon.svg'];
 
