@@ -15,7 +15,21 @@ function _manualSecciones() {
 
   const base = [
     { icon: '🧭', titulo: 'La barra de arriba', desc: 'Es igual en todos los módulos: mismo lugar para cada cosa y el color de la moneda del módulo (el mismo del Hub).',
-      pasos: ['A la izquierda, la moneda y el nombre del módulo, y al lado tu local. En la computadora, tocando el nombre (Stock ▾) se abre la lista para pasar a otro módulo; al final de esa lista está «Volver al Hub».', 'Al lado van los apartados: Buscar, Listas, Redistribución, Traslados e Inventario (cada uno ve los que su perfil tiene habilitados en el Hub). Son íconos; al pasar el mouse aparece el nombre, y el apartado en el que estás queda marcado en blanco con su nombre.', 'A la derecha: Salir.', 'En el celular: los apartados están adentro del botón ☰; a la vista quedan 🏠 Hub (volver al Hub) y Salir.', 'En la pestaña de la compu, al lado de "Stock", figura la versión (por ejemplo v89). Si dice "vieja", abajo aparece el cartel para actualizar.', '¿Dudas? Preguntale a Clodi (el botón de abajo a la derecha): sabe todo lo que dice este manual.', '🎙 Hablarle a Clodi: mantené apretado el micrófono (con el dedo, con el clic del mouse o con la barra espaciadora) mientras hablás, y soltalo para mandar la pregunta. Ya no se corta solo a mitad de la frase. En el iPhone el micrófono abre el teclado: se dicta con el 🎤 del teclado y se manda con retorno.', '🟥 Si algo falla, arriba sale un cartel rojo que NO se va solo: leelo y cerralo con la ✕. Explica el problema en palabras simples; «Ver detalle técnico» es para pasárselo a administración o a JP si sigue pasando.'] },
+      pasos: ['A la izquierda, la moneda y el nombre del módulo, y al lado tu local. En la computadora, tocando el nombre (Stock ▾) se abre la lista para pasar a otro módulo; al final de esa lista está «Volver al Hub».', 'Al lado van los apartados: Buscar, Listas, Redistribución, Traslados e Inventario (cada uno ve los que su perfil tiene habilitados en el Hub). Son íconos; al pasar el mouse aparece el nombre, y el apartado en el que estás queda marcado en blanco con su nombre.', 'A la derecha: Salir.', 'En el celular: los apartados están adentro del botón ☰; a la vista quedan 🏠 Hub (volver al Hub) y Salir.', 'En la pestaña de la compu, al lado de "Stock", figura la versión (por ejemplo v89). Si dice "vieja", abajo aparece el cartel para actualizar.', '¿Dudas? Preguntale a Clodi (el botón de abajo a la derecha): sabe todo lo que dice este manual.', '🎙 Hablarle a Clodi: mantené apretado el micrófono (con el dedo, con el clic del mouse o con la barra espaciadora) mientras hablás, y soltalo para mandar la pregunta. Ya no se corta solo a mitad de la frase. En el iPhone el micrófono abre el teclado: se dicta con el 🎤 del teclado y se manda con retorno. Si lo que pedís se hace en otro módulo, Clodi muestra el botón «Ir a … →»; si le decís «llevame a…», te lleva sola.', '🟥 Si algo falla, arriba sale un cartel rojo que NO se va solo: leelo y cerralo con la ✕. Explica el problema en palabras simples; «Ver detalle técnico» es para pasárselo a administración o a JP si sigue pasando.'] },
+    {
+      icon: '📊', titulo: 'Tablas tipo Excel',
+      desc: 'Todas las tablas del módulo (Listas, stock por color, vista tabla, inventario, Por llegar) funcionan igual que en Excel.',
+      pasos: [
+        'Títulos fijos: al bajar por una tabla larga, la fila de títulos queda siempre arriba.',
+        'Renglones alternados: las filas se pintan una sí y una no para leerlas más fácil; la que está bajo el mouse se resalta.',
+        'Ordenar: tocar el título de una columna ordena de menor a mayor; otra vez, de mayor a menor; una tercera vez, vuelve al orden original. Las fechas se ordenan como fechas y los importes como números.',
+        'Filtrar: el embudito al lado de cada título abre un menú para buscar dentro de esa columna, elegir qué valores mostrar (como los filtros de Excel) o poner un «desde/hasta» en fechas e importes. Arriba de la tabla aparece «Mostrando X de Y» con el botón «Quitar filtros».',
+        'Ocultar columnas: en el mismo menú, «Ocultar columna». Para volver a verlas: «Mostrar» en la barrita de arriba de la tabla, o «Columnas» en el menú de cualquier título. Se recuerdan en esa computadora.',
+        'Agrandar o achicar columnas: arrastrar el borde derecho del título. Doble clic en ese borde (o «Anchos automáticos» en el menú) vuelve al ancho normal. Los anchos también se recuerdan en esa computadora.',
+        'Los filtros y el orden duran mientras la página esté abierta; al recargarla, la tabla vuelve a mostrarse completa.',
+        'En las Listas, para ordenar a mano arrastrando (⠿), la tabla tiene que estar sin filtros y como venía.',
+      ],
+    },
     {
       icon: '🔐', titulo: 'Entrar una sola vez',
       desc: 'La sesión se comparte entre todos los módulos del sistema.',
@@ -83,6 +97,19 @@ function _manualSecciones() {
       ],
     },
     {
+      icon: '🏭', titulo: 'Lo que dice la web del mayorista',
+      desc: 'En cada artículo de Familia García Regueira (el mayorista) aparece lo que dice su web, www.claudiaadorno.com, que muestra el stock de su depósito.',
+      pasos: [
+        '🟢 Hay en el mayorista: el mayorista lo tiene en su depósito; si nosotros no tenemos, se le puede pedir.',
+        '🔜 Próximamente: el mayorista lo va a volver a traer, todavía sin fecha (al cliente: vuelve a ingresar, probablemente en unos meses).',
+        '🚢 Llega aprox. el 15/12: el mayorista ya tiene la fecha estimada de arribo del embarque; con esa fecha se le da una fecha estimada al cliente.',
+        '⛔ No está en la web del mayorista: el mayorista lo dejó de trabajar, probablemente está discontinuado.',
+        'Tocando la pastilla se abre la ficha del producto en la web. La web se revisa sola dos veces por día (8 y 14 h); si hace más de 3 días que no se pudo revisar, la pastilla no aparece.',
+        'En el menú ⋮, «🔜 Por llegar del mayorista» muestra todo lo que el mayorista tiene como Próximamente o con fecha de arribo, con nuestro stock en cada local. Tocando una fila se busca ese artículo.',
+        'En la vista tabla, la columna «Mayorista» dice lo mismo en corto.',
+      ],
+    },
+    {
       icon: '📤', titulo: 'Compartir por WhatsApp',
       desc: 'Mandale la ficha del producto (foto + precio + stock) a una clienta.',
       pasos: [
@@ -130,6 +157,7 @@ function _manualSecciones() {
       pasos: [
         '🔔 Notificaciones: activalas para enterarte de traslados y avisos. En iPhone requiere la app instalada en pantalla de inicio. Si el teléfono las apaga solo (maña de iOS), la app las reactiva automáticamente al abrirla.',
         '🎯 Solo resultado exacto / 🚫 Ocultar sin stock / 📋 Vista tabla: filtros de búsqueda a gusto.',
+        '🔜 Por llegar del mayorista: lo que la web del mayorista marca como Próximamente o con fecha estimada de arribo.',
         '⬇ Instalar la app: para tenerla como aplicación en el celu.',
       ],
     },
