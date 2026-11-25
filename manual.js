@@ -110,6 +110,18 @@ function _manualSecciones() {
       ],
     },
     {
+      icon: '📝', titulo: 'Pedir una corrección a Oficina',
+      desc: 'Si algo de un artículo está mal (la descripción, el precio, el proveedor, la foto, el código de barras…), se le pide a Oficina que lo corrija. Los artículos y los precios los cambia solo Oficina.',
+      pasos: [
+        'En la tarjeta del artículo, tocá 📝 (al lado del botón de WhatsApp).',
+        'Elegí qué hay que corregir y contá qué está mal y cómo tendría que ser (por ejemplo: «dice portavela y es un candelabro» o «en la etiqueta está a $ 5.000»). Con la cuenta compartida del local, poné también tu nombre.',
+        'Tocá «Enviar a Oficina»: a Oficina le llega el aviso. Si ese mismo pedido ya estaba hecho y sin resolver, lo muestra y no se repite.',
+        'Cuando Oficina lo resuelve (✅ hecho, o «no se cambia» con el motivo), te llega el aviso con la respuesta; si lo pediste con la cuenta del local, el aviso llega a las compus del local y a la encargada.',
+        'En el menú ⋮, «📝 Pedidos de corrección» muestra los pedidos de tu local: cuándo, qué se pidió, si está pendiente o hecho y qué contestó Oficina. Tocando una fila se busca ese artículo.',
+        'El precio que se cambia a mano en la factura del POS (con autorización) es solo para esa venta: no cambia el precio del artículo. Para cambiarlo de verdad, pedíselo a Oficina con 📝.',
+      ],
+    },
+    {
       icon: '📤', titulo: 'Compartir por WhatsApp',
       desc: 'Mandale la ficha del producto (foto + precio + stock) a una clienta.',
       pasos: [
@@ -158,6 +170,7 @@ function _manualSecciones() {
         '🔔 Notificaciones: activalas para enterarte de traslados y avisos. En iPhone requiere la app instalada en pantalla de inicio. Si el teléfono las apaga solo (maña de iOS), la app las reactiva automáticamente al abrirla.',
         '🎯 Solo resultado exacto / 🚫 Ocultar sin stock / 📋 Vista tabla: filtros de búsqueda a gusto.',
         '🔜 Por llegar del mayorista: lo que la web del mayorista marca como Próximamente o con fecha estimada de arribo.',
+        '📝 Pedidos de corrección: lo que tu local le pidió corregir a Oficina y lo que contestó.',
         '⬇ Instalar la app: para tenerla como aplicación en el celu.',
       ],
     },

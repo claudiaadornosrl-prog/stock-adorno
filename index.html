@@ -757,6 +757,19 @@ body { margin: 0; font-family: 'URW Gothic', -apple-system, BlinkMacSystemFont, 
 .btn-live { background: white; border: 1.5px solid var(--primary); color: var(--primary);
   border-radius: 8px; padding: 6px 12px; font-size: 13px; font-weight: 600; cursor: pointer; }
 .btn-live:disabled { opacity: 0.5; }
+/* (25-nov-2026) 📝 Pedir una corrección a Oficina: pastillas (regla de JP: nada rectangular) */
+.corr-ques { display: flex; flex-wrap: wrap; gap: 6px; }
+.corr-ques button { border: 1px solid var(--border); background: white; border-radius: 999px; padding: 6px 13px; font-size: 13px; cursor: pointer; font-family: inherit; color: var(--text); }
+.corr-ques button.on { background: var(--primary); border-color: var(--primary); color: white; font-weight: 600; }
+#corr-detalle { width: 100%; box-sizing: border-box; min-height: 84px; border: 1px solid var(--border); border-radius: 18px; padding: 10px 14px; font: inherit; font-size: 14px; resize: vertical; }
+#corr-nombre { width: 100%; box-sizing: border-box; border: 1px solid var(--border); border-radius: 999px; padding: 9px 14px; font: inherit; font-size: 14px; }
+.corr-pie { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
+.corr-pie button { border-radius: 999px; padding: 9px 18px; font: inherit; font-size: 14px; cursor: pointer; border: 1px solid var(--border); background: white; color: var(--text); }
+.corr-pie button.pri { background: var(--primary); color: white; border-color: var(--primary); font-weight: 600; }
+.corr-pie button:disabled { opacity: .5; cursor: default; }
+.corr-ya { background: #fffbeb; color: #92400e; border-radius: 16px; padding: 8px 12px; font-size: 12px; line-height: 1.45; }
+.corr-est { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.corr-est.pend { background: #fef3c7; color: #92400e; } .corr-est.hecho { background: #dcfce7; color: #166534; } .corr-est.desc { background: #f3f4f6; color: #6b7280; }
 
 #login-screen { min-height: 100vh; display: flex; align-items: center; justify-content: center;
   padding: 20px; background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%); }
@@ -836,7 +849,7 @@ tr.drag-over { border-top: 3px solid var(--primary); }
 @keyframes spin { to { transform: rotate(360deg); } }
 /* (11-nov-2026) Banner común (/hub/banner.css): el header viejo (.header/.htabs/.htab) quedó sin uso.
    Las ventanas de Stock tenían z-index 80-90 y el banner común tiene 100: se suben para que no queden tapadas. */
-#scan-modal-bg, #tras-modal-bg, #trasresp-modal-bg, #sug-modal-bg, #espstock-modal-bg, #esp-modal-bg, #porllegar-modal-bg { z-index: 300 !important; }
+#scan-modal-bg, #tras-modal-bg, #trasresp-modal-bg, #sug-modal-bg, #espstock-modal-bg, #esp-modal-bg, #porllegar-modal-bg, #corr-modal-bg, #pedcorr-modal-bg { z-index: 300 !important; }
 #toast { z-index: 400; }
 /* Listas (Toallas, Ropa de cama…): antes era un menú desplegable desde el ☰ del header; ahora son pastillas
    arriba del apartado Listas (en el banner común los apartados no llevan submenús) */
@@ -906,6 +919,7 @@ tr.drag-over { border-top: 3px solid var(--primary); }
         <button id="mi-proveedor" onclick="toggleProveedor()">🏭 Buscar por proveedor</button>
         <button id="mi-tabla" onclick="toggleVistaTabla()">📋 Vista tabla</button>
         <button id="mi-porllegar" onclick="abrirPorLlegar()">🔜 Por llegar del mayorista</button>
+        <button id="mi-pedcorr" onclick="abrirPedidosCorr()">📝 Pedidos de corrección</button>
         <button onclick="doLogout()">👋 Cerrar sesión</button>
       </div>
     </div>
@@ -989,6 +1003,27 @@ tr.drag-over { border-top: 3px solid var(--primary); }
     </div>
     <div style="font-size:12px;color:var(--muted);margin-top:4px;">Lo que la web del mayorista (Familia García Regueira) marca como Próximamente o con fecha estimada de arribo.</div>
     <div id="porllegar-contenido" style="margin-top:12px;max-height:65vh;overflow:auto;"><span class="spinner"></span></div>
+  </div>
+</div>
+<!-- (25-nov-2026, JP) 📝 Pedir una corrección a Oficina (los artículos y los precios los cambia solo Oficina, en Productos) -->
+<div id="corr-modal-bg" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:80; align-items:center; justify-content:center; padding:16px;" onclick="if (event.target === this) cerrarCorreccion()">
+  <div class="esp-modal" style="max-width:480px;width:100%;max-height:92vh;overflow:auto;">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+      <h3 style="margin:0;font-size:17px;">📝 Pedir una corrección</h3>
+      <button style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--muted);" onclick="cerrarCorreccion()" aria-label="Cerrar">×</button>
+    </div>
+    <div id="corr-art" style="font-size:13px;margin-top:4px;"></div>
+    <div id="corr-cuerpo" style="margin-top:12px;"></div>
+  </div>
+</div>
+<div id="pedcorr-modal-bg" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:80; align-items:center; justify-content:center; padding:16px;" onclick="if (event.target === this) cerrarPedidosCorr()">
+  <div class="esp-modal" style="max-width:860px;width:100%;">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+      <h3 style="margin:0;font-size:17px;">📝 Pedidos de corrección</h3>
+      <button style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--muted);" onclick="cerrarPedidosCorr()" aria-label="Cerrar">×</button>
+    </div>
+    <div style="font-size:12px;color:var(--muted);margin-top:4px;">Lo que se le pidió corregir a Oficina desde este local, y lo que contestó.</div>
+    <div id="pedcorr-contenido" style="margin-top:12px;max-height:65vh;overflow:auto;"><span class="spinner"></span></div>
   </div>
 </div>
 <div id="espstock-modal-bg" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:80; align-items:center; justify-content:center; padding:16px;">
@@ -1325,6 +1360,10 @@ async function detectarAdmin() {
   if (new URLSearchParams(location.search).get('vista') === 'redistribucion' && veo('stock.redistribucion')) {
     history.replaceState(null, '', location.pathname);
     verTab('redis');
+  }
+  if (new URLSearchParams(location.search).get('pedidos')) {   // (25-nov) aviso «Oficina corrigió…» → la lista de pedidos
+    history.replaceState(null, '', location.pathname);
+    abrirPedidosCorr();
   }
   if (espCargado) { renderListasChips(); renderEspalma(); }
 }
@@ -2355,6 +2394,93 @@ function verDesdePorLlegar(sku) {
   buscar();
 }
 
+// ═══ 📝 PEDIR UNA CORRECCIÓN A OFICINA (25-nov-2026) ═════════════════════════════════════════════════════════════════════
+// JP: «desde los locales, hay que dejarles un botón en el alta del producto para que pueda dejar una "solicitud de
+// modificación" - para cuando le quieran marcar alguna corrección a la oficina». Los artículos y los precios los cambia solo
+// Oficina (Productos → 📝 Pedidos); acá se deja el pedido (productos_correccion_pedir) y le llega un aviso a Oficina. Cuando
+// lo resuelven, el aviso vuelve a quien lo pidió (o a las PC del local, si lo pidió la cuenta compartida) y queda en ⋮ → 📝.
+const QUE_CORR = [['descripcion', 'Descripción'], ['precio', 'Precio'], ['proveedor', 'Proveedor'], ['categoria', 'Categoría'],
+  ['material', 'Material'], ['origen', 'Origen'], ['foto', 'Foto'], ['codigo', 'Código de barras'], ['otro', 'Otra cosa']];
+const QUE_CORR_TXT = Object.fromEntries(QUE_CORR);
+let corrSku = null, corrQue = null, corrEnviando = false;
+const fechaHoraCorr = d => d ? new Date(d).toLocaleString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }) : '';
+const quienCorr = s => { s = String(s || '').trim(); if (!s) return ''; if (s.includes('@')) return 'cuenta ' + s.split('@')[0]; return s.toLowerCase().replace(/(^|\s)\S/g, c => c.toUpperCase()); };
+async function pedirCorreccion(sku) {
+  corrSku = sku; corrQue = null;
+  const a = (ultimoResultado?.articulos || []).find(x => x.sku === sku) || { sku };
+  document.getElementById('corr-art').innerHTML = `<b style="font-family:ui-monospace,monospace;">${escHtml(sku)}</b> · ${escHtml(a.descripcion || '')}${a.precio != null ? ' · ' + fmt$(a.precio) : ''}`;
+  const propio = await nombrePropio();
+  document.getElementById('corr-cuerpo').innerHTML = `
+    <div style="font-size:13px;font-weight:600;margin-bottom:6px;">¿Qué hay que corregir?</div>
+    <div class="corr-ques">${QUE_CORR.map(([k, t]) => `<button type="button" data-q="${k}" onclick="elegirQueCorr('${k}')">${t}</button>`).join('')}</div>
+    <div style="font-size:13px;font-weight:600;margin:12px 0 6px;">¿Qué está mal y cómo tendría que ser?</div>
+    <textarea id="corr-detalle" maxlength="500" placeholder="Ej.: dice «portavela» y es un candelabro · en la etiqueta está a $ 5.000"></textarea>
+    ${propio ? '' : '<input id="corr-nombre" maxlength="60" placeholder="¿Quién lo pide? (tu nombre)" autocomplete="off" style="margin-top:8px;">'}
+    <div id="corr-previos" style="margin-top:8px;"></div>
+    <div class="corr-pie"><button type="button" onclick="cerrarCorreccion()">Cancelar</button><button type="button" class="pri" id="corr-enviar" onclick="enviarCorreccion()">Enviar a Oficina</button></div>
+    <div style="font-size:11px;color:var(--muted);margin-top:8px;">Los artículos y los precios los corrige Oficina. Cuando lo resuelvan te llega el aviso, y queda en ⋮ → 📝 Pedidos de corrección.</div>`;
+  document.getElementById('corr-modal-bg').style.display = 'flex';
+  // lo que ya está pedido de este artículo y sin resolver (para no pedirlo dos veces)
+  try {
+    const { data } = await sb.rpc('productos_correcciones_listar', { p_estado: 'pendiente', p_sku: sku, p_limite: 10 });
+    const l = (data && data.filas) || [], el = document.getElementById('corr-previos');
+    if (el && corrSku === sku && l.length) el.innerHTML = `<div class="corr-ya">⏳ Ya está pedido y Oficina todavía no lo resolvió:${l.map(q => `<div>· <b>${escHtml(QUE_CORR_TXT[q.que] || q.que)}</b>: ${escHtml(q.detalle)} <span style="opacity:.75;">(${escHtml(quienCorr(q.pedido_nombre))}, ${fechaHoraCorr(q.at)})</span></div>`).join('')}</div>`;
+  } catch (_) {}
+}
+function elegirQueCorr(k) { corrQue = k; document.querySelectorAll('#corr-cuerpo .corr-ques button').forEach(b => b.classList.toggle('on', b.dataset.q === k)); }
+function cerrarCorreccion() { document.getElementById('corr-modal-bg').style.display = 'none'; corrSku = null; }
+async function enviarCorreccion() {
+  if (corrEnviando || !corrSku) return;
+  const det = (document.getElementById('corr-detalle')?.value || '').trim();
+  const nom = (document.getElementById('corr-nombre')?.value || '').trim();
+  if (!corrQue) { toast('Elegí qué hay que corregir.'); return; }
+  if (det.length < 3) { toast('Contá qué está mal y cómo tendría que ser.'); return; }
+  if (window.ADORNO_VERCOMO) { toast('👁 En «Ver como» no se manda nada: así le aparece el pedido a esta cuenta.'); return; }
+  corrEnviando = true;
+  const btn = document.getElementById('corr-enviar'); if (btn) { btn.disabled = true; btn.textContent = 'Enviando…'; }
+  const sku = corrSku, que = corrQue;
+  try {
+    const { data, error } = await sb.rpc('productos_correccion_pedir', { p_sku: sku, p_que: que, p_detalle: det, p_nombre: nom || null });
+    if (error) throw error;
+    cerrarCorreccion();
+    if (data.repetido) { toast('Ese pedido ya estaba: Oficina lo tiene pendiente.'); return; }
+    toast('📝 Pedido enviado a Oficina. Te avisamos cuando lo resuelvan.');
+    try {
+      await sb.functions.invoke('enviar-push', { body: { local: 'oficina', app: 'stock', tag: 'prodcorr-' + data.id,
+        url: 'https://claudiaadornosrl-prog.github.io/productos-adorno/?pedidos=1',
+        title: '📝 Corregir ' + sku + ' · ' + (QUE_CORR_TXT[que] || que),
+        body: (LOCAL_LABEL[data.local] ? LOCAL_LABEL[data.local] + ': ' : '') + (data.nombre ? quienCorr(data.nombre) + ' pide: ' : '') + det.slice(0, 140) } });
+    } catch (_) { /* el aviso no es crítico: el pedido queda en Productos → 📝 Pedidos */ }
+  } catch (e) { avisoError(e); }
+  finally { corrEnviando = false; if (btn) { btn.disabled = false; btn.textContent = 'Enviar a Oficina'; } }
+}
+// ⋮ → 📝 Pedidos de corrección: los de este local (y los propios), con lo que contestó Oficina
+async function abrirPedidosCorr() {
+  document.getElementById('kebab-menu')?.classList.remove('open');
+  const bg = document.getElementById('pedcorr-modal-bg'), cont = document.getElementById('pedcorr-contenido');
+  cont.innerHTML = '<div style="text-align:center;padding:24px;"><span class="spinner"></span></div>';
+  bg.style.display = 'flex';
+  try {
+    const { data, error } = await sb.rpc('productos_correcciones_listar', { p_estado: 'todos', p_limite: 150 });
+    if (error) throw error;
+    const l = data.filas || [];
+    cont.innerHTML = !l.length ? '<div class="empty">Todavía no hay pedidos de corrección. Se dejan con 📝 en la tarjeta del artículo.</div>' : `
+      <div class="porllegar-wrap"><table class="porllegar-tabla">
+        <thead><tr><th>Cuándo</th><th>Artículo</th><th>Qué</th><th>Pedido</th><th>Estado</th><th>Respuesta de Oficina</th></tr></thead>
+        <tbody>${l.map(q => `<tr style="cursor:pointer;" onclick="verDesdePedidosCorr('${escAttr(q.sku)}')">
+          <td style="white-space:nowrap;">${fechaHoraCorr(q.at)}<div style="font-size:11px;color:var(--muted);">${escHtml(quienCorr(q.pedido_nombre))}</div></td>
+          <td><b style="font-family:ui-monospace,monospace;">${escHtml(q.sku)}</b><div style="font-size:12px;color:var(--muted);">${escHtml(q.descripcion || '')}</div></td>
+          <td>${escHtml(QUE_CORR_TXT[q.que] || q.que)}</td>
+          <td style="min-width:180px;">${escHtml(q.detalle)}</td>
+          <td>${q.estado === 'pendiente' ? '<span class="corr-est pend">⏳ pendiente</span>' : q.estado === 'hecho' ? '<span class="corr-est hecho">✅ hecho</span>' : '<span class="corr-est desc">✖ no se cambia</span>'}</td>
+          <td style="min-width:140px;">${escHtml(q.respuesta || '')}${q.resuelto_nombre ? `<div style="font-size:11px;color:var(--muted);">${escHtml(quienCorr(q.resuelto_nombre))} · ${fechaHoraCorr(q.resuelto_at)}</div>` : ''}</td></tr>`).join('')}</tbody>
+      </table></div>
+      <div style="font-size:11px;color:var(--muted);margin-top:8px;">${data.pendientes} pendiente(s) · tocá una fila para ver el artículo</div>`;
+  } catch (e) { cont.innerHTML = `<div class="empty">⚠️ ${escHtml(errTxt(e))}</div>`; }
+}
+function cerrarPedidosCorr() { document.getElementById('pedcorr-modal-bg').style.display = 'none'; }
+function verDesdePedidosCorr(sku) { cerrarPedidosCorr(); document.getElementById('q').value = sku; buscar(); }
+
 // ── Lector de código de barras ──
 // Nativo (BarcodeDetector, Android) con fallback ZXing (iPhone / desktop).
 // (16-nov-2026, JP vía Infra: «fijate que no choque con el fichador») En las compus con fichador por cámara, mientras el
@@ -3053,6 +3179,7 @@ function cardHtml(a) {
       <span class="frescura">${frescura(a.updated_at)}</span>
       <span style="display:flex;gap:6px;">
         ${(a.descripcion || '').trim().split(/\s+/).length > 1 ? `<button class="btn-live" onclick="verColores('${escAttr(a.sku)}')" title="Ver otros colores / variantes">🎨</button>` : ''}
+        <button class="btn-live" onclick="pedirCorreccion('${escAttr(a.sku)}')" title="Pedir una corrección a Oficina (descripción, precio, proveedor, foto…)" aria-label="Pedir una corrección">📝</button>
         <button class="btn-live" onclick="compartirWA('${escAttr(a.sku)}')" title="Compartir por WhatsApp">${WA_SVG}</button>
         ${veo('stock.stock_ahora') ? `<button class="btn-live" id="live-${cssId(a.sku)}" onclick="verificarEnVivo('${escAttr(a.sku)}')" title="Verificar stock en vivo contra los servers">⚡</button>` : ''}
       </span>
@@ -3195,7 +3322,7 @@ mostrarVacio();
   }, true);
 })();
 </script>
-<script src="manual.js?v=18"></script>
+<script src="manual.js?v=19"></script>
 <script src="inventario.js?v=5"></script>
 <script>
 // (24-ago) Blindaje iOS: re-suscripcion automatica de push (ver regla en
