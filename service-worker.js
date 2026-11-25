@@ -1,5 +1,5 @@
 // Service Worker — Stock Adorno
-const CACHE_VERSION = 'stock-adorno-v99-pedidos-correccion';
+const CACHE_VERSION = 'stock-adorno-v100-cache-propia';
 const CACHE_ASSETS = ['./', './index.html',
   './manual.js', './inventario.js', './permisos.js', './adorno-tablas.js', './manifest.webmanifest', './favicon.svg'];
 
@@ -12,7 +12,8 @@ self.addEventListener('install', e => {
 self.addEventListener('activate', e => {
   e.waitUntil(
     caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE_VERSION).map(k => caches.delete(k)))
+      // (25-nov, Infra) solo borra las cachés de Stock: todos los módulos comparten el dominio (y las cachés)
+      Promise.all(keys.filter(k => k.startsWith('stock-adorno-') && k !== CACHE_VERSION).map(k => caches.delete(k)))
     ).then(() => self.clients.claim())
   );
 });
