@@ -122,6 +122,17 @@ function _manualSecciones() {
       ],
     },
     {
+      icon: '💲', titulo: 'Cambios de precio',
+      desc: 'Cuando Oficina cambia precios de venta, arriba de todo aparece el aviso y la lista de los artículos que cambian, para cambiar las etiquetas a tiempo. También llega una notificación.',
+      pasos: [
+        'Oficina puede cargar un precio nuevo que empieza a regir más adelante (un día y una hora): hasta esa hora se cobra el precio de hoy, y a esa hora cambia solo en el POS.',
+        'Te llega una notificación cuando se carga («Precios nuevos desde el lun 1/12 a las 9:00») y otra cuando empieza a regir. Tocándola se abre Stock con la lista.',
+        'Arriba de la pantalla, el aviso amarillo dice cuándo cambian y cuántos artículos; en verde, los que ya rigen (de los últimos dos días). «Ver la lista» los muestra; ✕ esconde ese aviso en esa compu.',
+        'En la lista: código, descripción, precio de hoy, precio nuevo, la diferencia y el stock de tu local. «solo lo que hay en…» deja solo los que tienen stock en tu local (los que necesitan etiqueta nueva).',
+        'Si Oficina cancela un cambio que todavía no regía, llega un aviso: si ya habías cambiado etiquetas, volvé a las de antes.',
+      ],
+    },
+    {
       icon: '📤', titulo: 'Compartir por WhatsApp',
       desc: 'Mandale la ficha del producto (foto + precio + stock) a una clienta.',
       pasos: [
